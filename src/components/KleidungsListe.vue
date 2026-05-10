@@ -45,10 +45,10 @@ const kleidungsstuecke: Kleidungsstueck[] = [
 </script>
 
 <template>
-  <section class="kleidungs-liste" aria-labelledby="kleidungs-liste-title">
+  <section class="kleidungs-liste">
     <div class="intro">
       <p class="eyebrow">Lagerbestand</p>
-      <h2 id="kleidungs-liste-title">Kleidungsstücke im Lager</h2>
+      <h2>Kleidungsstücke im Lager</h2>
       <p>Eine erste Vue-Komponente für die Übersicht deiner vorhandenen Kleidung.</p>
     </div>
 
