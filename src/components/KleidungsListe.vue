@@ -49,7 +49,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
     <div class="intro">
       <p class="eyebrow">Lagerbestand</p>
       <h2>Kleidungsstücke im Lager</h2>
-      <p>Eine erste Vue-Komponente für die Übersicht deiner vorhandenen Kleidung.</p>
+      <p>Eine erste Vue-Komponente für die Übersicht meiner vorhandenen Kleidung.</p>
     </div>
 
     <div class="liste">
