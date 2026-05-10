@@ -4,6 +4,7 @@ type Kleidungsstueck = {
   name: string
   groesse: string
   kategorie: string
+  farbe: string
   bestand: number
 }
 
@@ -13,6 +14,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
     name: 'T-Shirt Basic',
     groesse: 'M',
     kategorie: 'Oberteil',
+    farbe: 'Schwarz',
     bestand: 24,
   },
   {
@@ -20,6 +22,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
     name: 'Jeans Regular',
     groesse: 'L',
     kategorie: 'Hose',
+    farbe: 'Blau',
     bestand: 12,
   },
   {
@@ -27,6 +30,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
     name: 'Winterjacke',
     groesse: 'XL',
     kategorie: 'Jacke',
+    farbe: 'Gruen',
     bestand: 7,
   },
   {
@@ -34,6 +38,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
     name: 'Pullover',
     groesse: 'S',
     kategorie: 'Oberteil',
+    farbe: 'Grau',
     bestand: 18,
   },
 ]
@@ -51,7 +56,11 @@ const kleidungsstuecke: Kleidungsstueck[] = [
       <article v-for="teil in kleidungsstuecke" :key="teil.id" class="kleidungsstueck">
         <div>
           <h3>{{ teil.name }}</h3>
-          <p>{{ teil.kategorie }} · Groesse {{ teil.groesse }}</p>
+          <p class="details">
+            <span>{{ teil.kategorie }}</span>
+            <span>Groesse {{ teil.groesse }}</span>
+            <span>{{ teil.farbe }}</span>
+          </p>
         </div>
         <strong>{{ teil.bestand }} Stk.</strong>
       </article>
@@ -114,8 +123,17 @@ h2 {
   font-weight: 700;
 }
 
-.kleidungsstueck p {
+.details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
   color: #627d98;
+}
+
+.details span:not(:last-child)::after {
+  content: '·';
+  margin-left: 0.4rem;
 }
 
 .kleidungsstueck strong {
