@@ -30,7 +30,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
     name: 'Winterjacke',
     groesse: 'XL',
     kategorie: 'Jacke',
-    farbe: 'Gruen',
+    farbe: 'Grün',
     bestand: 7,
   },
   {
@@ -48,8 +48,8 @@ const kleidungsstuecke: Kleidungsstueck[] = [
   <section class="kleidungs-liste" aria-labelledby="kleidungs-liste-title">
     <div class="intro">
       <p class="eyebrow">Lagerbestand</p>
-      <h2 id="kleidungs-liste-title">Kleidungsstuecke im Lager</h2>
-      <p>Eine erste Vue-Komponente fuer die Uebersicht deiner vorhandenen Kleidung.</p>
+      <h2 id="kleidungs-liste-title">Kleidungsstücke im Lager</h2>
+      <p>Eine erste Vue-Komponente für die Übersicht deiner vorhandenen Kleidung.</p>
     </div>
 
     <div class="liste">
@@ -58,7 +58,7 @@ const kleidungsstuecke: Kleidungsstueck[] = [
           <h3>{{ teil.name }}</h3>
           <p class="details">
             <span>{{ teil.kategorie }}</span>
-            <span>Groesse {{ teil.groesse }}</span>
+            <span>Größe {{ teil.groesse }}</span>
             <span>{{ teil.farbe }}</span>
           </p>
         </div>
