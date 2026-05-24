@@ -15,14 +15,15 @@ type Kleidungsstueck = {
 const kleidungsstuecke =
   ref<Kleidungsstueck[]>([])
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL
-
 function requestKleidung(): void {
+  const baseUrl =
+    import.meta.env.VITE_API_BASE_URL
+
+  const endpoint =
+    baseUrl + '/api/kleidung'
+
   axios
-    .get<Kleidungsstueck[]>(
-      `${apiBaseUrl}/api/kleidung`
-    )
+    .get<Kleidungsstueck[]>(endpoint)
     .then((response) => {
       kleidungsstuecke.value = response.data
     })
