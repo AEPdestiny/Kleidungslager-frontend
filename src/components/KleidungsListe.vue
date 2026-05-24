@@ -1,47 +1,35 @@
 <script setup lang="ts">
+import axios from 'axios'
+import { onMounted, ref } from 'vue'
+
 type Kleidungsstueck = {
   id: number
-  name: string
-  groesse: string
+  bezeichnung: string
+  size: string
   kategorie: string
   farbe: string
-  bestand: number
+  lagerbestand: number
 }
 
-const kleidungsstuecke: Kleidungsstueck[] = [
-  {
-    id: 1,
-    name: 'T-Shirt Basic',
-    groesse: 'M',
-    kategorie: 'Oberteil',
-    farbe: 'Schwarz',
-    bestand: 24,
-  },
-  {
-    id: 2,
-    name: 'Jeans Regular',
-    groesse: 'L',
-    kategorie: 'Hose',
-    farbe: 'Blau',
-    bestand: 12,
-  },
-  {
-    id: 3,
-    name: 'Winterjacke',
-    groesse: 'XL',
-    kategorie: 'Jacke',
-    farbe: 'Grün',
-    bestand: 7,
-  },
-  {
-    id: 4,
-    name: 'Pullover',
-    groesse: 'S',
-    kategorie: 'Oberteil',
-    farbe: 'Grau',
-    bestand: 18,
-  },
-]
+const kleidungsstuecke =
+  ref<Kleidungsstueck[]>([])
+
+function requestKleidung(): void {
+  axios
+    .get<Kleidungsstueck[]>(
+      'http://localhost:8080/api/kleidung'
+    )
+    .then((response) => {
+      kleidungsstuecke.value = response.data
+    })
+    .catch((error) => {
+      console.log(error)
+    })
+}
+
+onMounted(() => {
+  requestKleidung()
+})
 </script>
 
 <template>
