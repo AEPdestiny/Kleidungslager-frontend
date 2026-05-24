@@ -6,6 +6,7 @@ type Kleidungsstueck = {
   id: number
   bezeichnung: string
   size: string
+  lager: number
   kategorie: string
   farbe: string
   lagerbestand: number
@@ -51,6 +52,7 @@ onMounted(() => {
             <span>{{ teil.kategorie }}</span>
             <span>Größe {{ teil.size }}</span>
             <span>{{ teil.farbe }}</span>
+            <span>Lager {{ teil.lager }}</span>
           </p>
         </div>
         <strong>{{ teil.lagerbestand }} Stk.</strong>
