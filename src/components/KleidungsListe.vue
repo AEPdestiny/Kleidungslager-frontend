@@ -43,14 +43,14 @@ onMounted(() => {
     <div class="liste">
       <article v-for="teil in kleidungsstuecke" :key="teil.id" class="kleidungsstueck">
         <div>
-          <h3>{{ teil.name }}</h3>
+          <h3>{{ teil.bezeichnung }}</h3>
           <p class="details">
             <span>{{ teil.kategorie }}</span>
-            <span>Größe {{ teil.groesse }}</span>
+            <span>Größe {{ teil.size }}</span>
             <span>{{ teil.farbe }}</span>
           </p>
         </div>
-        <strong>{{ teil.bestand }} Stk.</strong>
+        <strong>{{ teil.lagerbestand }} Stk.</strong>
       </article>
     </div>
   </section>
