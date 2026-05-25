@@ -95,14 +95,14 @@ function deleteKleidung(): void {
     import.meta.env.VITE_API_BASE_URL
 
   const endpoint =
-    baseUrl + '/api/kleidung/' + zuLoeschendeId.value
+    baseUrl + '/api/kleidung/' + id
 
   axios
     .delete(endpoint)
     .then(() => {
       kleidungsstuecke.value =
         kleidungsstuecke.value.filter((teil) => {
-          return teil.id !==  zuLoeschendeId.value
+          return teil.id !== id
         })
       zuLoeschendeId.value = null
     })
@@ -372,7 +372,7 @@ button {
 }
 
 .delete-button {
-  min-height: 2.4rem;
+  min-height: 2.7rem;
   padding: 0 0.8rem;
   background: #b42318;
 }
@@ -414,6 +414,7 @@ button {
 
 .modal-actions button {
   width: 7rem;
+  min-height: 2.7rem;
 }
 
 </style>
