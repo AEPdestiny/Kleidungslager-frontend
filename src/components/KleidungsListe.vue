@@ -89,6 +89,8 @@ function deleteKleidung(): void {
     return
   }
 
+  const id = zuLoeschendeId.value
+
   const baseUrl =
     import.meta.env.VITE_API_BASE_URL
 
@@ -221,16 +223,16 @@ onMounted(() => {
         <p>Möchtest du dieses Kleidungsstück wirklich löschen?</p>
 
         <div class="modal-actions">
-          <button type="button" @click="abbrechenLoeschen">
-            Abbrechen
-          </button>
-
           <button
             class="delete-button"
             type="button"
             @click="deleteKleidung"
           >
             Löschen
+          </button>
+
+          <button type="button" @click="abbrechenLoeschen">
+            Abbrechen
           </button>
         </div>
       </div>
@@ -408,6 +410,10 @@ button {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1rem;
+}
+
+.modal-actions button {
+  width: 7rem;
 }
 
 </style>
