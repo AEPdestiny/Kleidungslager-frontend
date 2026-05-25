@@ -12,8 +12,26 @@ type Kleidungsstueck = {
   lagerbestand: number
 }
 
+type NeuesKleidungsstueck = {
+  bezeichnung: string
+  size: string
+  lager: number
+  kategorie: string
+  farbe: string
+  lagerbestand: number
+}
+
 const kleidungsstuecke =
   ref<Kleidungsstueck[]>([])
+
+const neuesKleidungsstueck = ref<NeuesKleidungsstueck>({
+  bezeichnung: '',
+  size: 'M',
+  lager: 1,
+  kategorie: 'HEMD',
+  farbe: '',
+  lagerbestand: 1,
+})
 
 function requestKleidung(): void {
   const baseUrl =
@@ -32,6 +50,35 @@ function requestKleidung(): void {
     })
 }
 
+function createKleidung(): void {
+  const baseUrl =
+    import.meta.env.VITE_API_BASE_URL
+
+  const endpoint =
+    baseUrl + '/api/kleidung'
+
+  axios
+    .post<Kleidungsstueck>(
+      endpoint,
+      neuesKleidungsstueck.value
+    )
+    .then((response) => {
+      kleidungsstuecke.value.push(response.data)
+
+      neuesKleidungsstueck.value = {
+        bezeichnung: '',
+        size: 'M',
+        lager: 1,
+        kategorie: 'HEMD',
+        farbe: '',
+        lagerbestand: 1,
+      }
+    })
+    .catch((error) => {
+      console.log(error)
+    })
+}
+
 onMounted(() => {
   requestKleidung()
 })
@@ -44,6 +91,66 @@ onMounted(() => {
       <h2>Kleidungsstücke im Lager</h2>
       <p>Eine erste Vue-Komponente für die Übersicht meiner vorhandenen Kleidung.</p>
     </div>
+
+    <form class="formular" @submit.prevent="createKleidung">
+      <label>
+        Bezeichnung
+        <input v-model="neuesKleidungsstueck.bezeichnung" required />
+      </label>
+
+      <label>
+        Größe
+        <select v-model="neuesKleidungsstueck.size">
+          <option value="XS">XS</option>
+          <option value="S">S</option>
+          <option value="M">M</option>
+          <option value="L">L</option>
+          <option value="XL">XL</option>
+          <option value="XXL">XXL</option>
+          <option value="XXXL">XXXL</option>
+        </select>
+      </label>
+
+      <label>
+        Kategorie
+        <select v-model="neuesKleidungsstueck.kategorie">
+          <option value="HEMD">HEMD</option>
+          <option value="HOSE">HOSE</option>
+          <option value="KLEID">KLEID</option>
+          <option value="JACKE">JACKE</option>
+          <option value="SCHUHE">SCHUHE</option>
+          <option value="ACCESSOIRES">ACCESSOIRES</option>
+          <option value="SONSTIGES">SONSTIGES</option>
+        </select>
+      </label>
+
+      <label>
+        Farbe
+        <input v-model="neuesKleidungsstueck.farbe" required />
+      </label>
+
+      <label>
+        Lager
+        <input
+          v-model.number="neuesKleidungsstueck.lager"
+          min="1"
+          required
+          type="number"
+        />
+      </label>
+
+      <label>
+        Bestand
+        <input
+          v-model.number="neuesKleidungsstueck.lagerbestand"
+          min="0"
+          required
+          type="number"
+        />
+      </label>
+
+      <button type="submit">Speichern</button>
+    </form>
 
     <div class="liste">
       <article v-for="teil in kleidungsstuecke" :key="teil.id" class="kleidungsstueck">
@@ -94,6 +201,46 @@ h2 {
   font-size: 1rem;
 }
 
+.formular {
+  display: grid;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  color: #334e68;
+  font-weight: 700;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #bcccdc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #102a43;
+  font: inherit;
+}
+
+button {
+  min-height: 2.7rem;
+  border: 0;
+  border-radius: 6px;
+  background: #23614f;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+
 .liste {
   display: grid;
   gap: 0.75rem;
@@ -134,5 +281,15 @@ h2 {
   flex: 0 0 auto;
   color: #1f513f;
   font-weight: 800;
+}
+
+@media (min-width: 720px) {
+  .formular {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  button {
+    align-self: end;
+  }
 }
 </style>
