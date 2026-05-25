@@ -84,6 +84,7 @@ function deleteKleidung(id: number): void {
     'Möchtest du dieses Kleidungsstück wirklich löschen?'
   )
 
+
   if (!bestaetigt) {
     return
   }
