@@ -80,6 +80,14 @@ function createKleidung(): void {
 }
 
 function deleteKleidung(id: number): void {
+  const bestaetigt = confirm(
+    'Möchtest du dieses Kleidungsstück wirklich löschen?'
+  )
+
+  if (!bestaetigt) {
+    return
+  }
+
   const baseUrl =
     import.meta.env.VITE_API_BASE_URL
 
@@ -324,9 +332,18 @@ button {
   }
 }
 
+.aktionen {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
 .delete-button {
   min-height: 2.4rem;
   padding: 0 0.8rem;
   background: #b42318;
 }
+
+
 </style>
