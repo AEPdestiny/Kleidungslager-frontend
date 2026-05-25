@@ -79,6 +79,26 @@ function createKleidung(): void {
     })
 }
 
+function deleteKleidung(id: number): void {
+  const baseUrl =
+    import.meta.env.VITE_API_BASE_URL
+
+  const endpoint =
+    baseUrl + '/api/kleidung/' + id
+
+  axios
+    .delete(endpoint)
+    .then(() => {
+      kleidungsstuecke.value =
+        kleidungsstuecke.value.filter((teil) => {
+          return teil.id !== id
+        })
+    })
+    .catch((error) => {
+      console.log(error)
+    })
+}
+
 onMounted(() => {
   requestKleidung()
 })
@@ -163,7 +183,18 @@ onMounted(() => {
             <span>Lager {{ teil.lager }}</span>
           </p>
         </div>
-        <strong>{{ teil.lagerbestand }} Stk.</strong>
+
+        <div class="aktionen">
+          <strong>{{ teil.lagerbestand }} Stk.</strong>
+          <button
+            class="delete-button"
+            type="button"
+            @click="deleteKleidung(teil.id)"
+          >
+            Löschen
+          </button>
+        </div>
+
       </article>
     </div>
   </section>
@@ -291,5 +322,11 @@ button {
   button {
     align-self: end;
   }
+}
+
+.delete-button {
+  min-height: 2.4rem;
+  padding: 0 0.8rem;
+  background: #b42318;
 }
 </style>
