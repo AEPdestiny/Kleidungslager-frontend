@@ -24,6 +24,11 @@ type NeuesKleidungsstueck = {
 const kleidungsstuecke =
   ref<Kleidungsstueck[]>([])
 
+const zuLoeschendeId =
+  ref<number | null>(null)
+
+
+
 const neuesKleidungsstueck = ref<NeuesKleidungsstueck>({
   bezeichnung: '',
   size: 'M',
@@ -79,13 +84,8 @@ function createKleidung(): void {
     })
 }
 
-function deleteKleidung(id: number): void {
-  const bestaetigt = confirm(
-    'Möchtest du dieses Kleidungsstück wirklich löschen?'
-  )
-
-
-  if (!bestaetigt) {
+function deleteKleidung(): void {
+  if (zuLoeschendeId.value === null) {
     return
   }
 
@@ -93,19 +93,28 @@ function deleteKleidung(id: number): void {
     import.meta.env.VITE_API_BASE_URL
 
   const endpoint =
-    baseUrl + '/api/kleidung/' + id
+    baseUrl + '/api/kleidung/' + zuLoeschendeId.value
 
   axios
     .delete(endpoint)
     .then(() => {
       kleidungsstuecke.value =
         kleidungsstuecke.value.filter((teil) => {
-          return teil.id !== id
+          return teil.id !==  zuLoeschendeId.value
         })
+      zuLoeschendeId.value = null
     })
     .catch((error) => {
       console.log(error)
     })
+}
+
+function abbrechenLoeschen(): void {
+  zuLoeschendeId.value = null
+}
+
+function frageLoeschen(id: number): void {
+  zuLoeschendeId.value = id
 }
 
 onMounted(() => {
@@ -198,13 +207,33 @@ onMounted(() => {
           <button
             class="delete-button"
             type="button"
-            @click="deleteKleidung(teil.id)"
+            @click="frageLoeschen(teil.id)"
           >
             Löschen
           </button>
         </div>
-
       </article>
+    </div>
+
+    <div v-if="zuLoeschendeId !== null" class="modal-backdrop">
+      <div class="modal">
+        <h3>Löschen bestätigen</h3>
+        <p>Möchtest du dieses Kleidungsstück wirklich löschen?</p>
+
+        <div class="modal-actions">
+          <button type="button" @click="abbrechenLoeschen">
+            Abbrechen
+          </button>
+
+          <button
+            class="delete-button"
+            type="button"
+            @click="deleteKleidung"
+          >
+            Löschen
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 </template>
@@ -346,5 +375,39 @@ button {
   background: #b42318;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 20;
+}
+
+.modal {
+  width: min(100%, 24rem);
+  padding: 1.25rem;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.22);
+}
+
+.modal h3 {
+  margin-bottom: 0.5rem;
+  color: #102a43;
+  font-weight: 800;
+}
+
+.modal p {
+  color: #52606d;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
 
 </style>
