@@ -1,32 +1,69 @@
 @import './base.css';
 
+:root {
+  --page-bg: #eef5f1;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-strong: #ffffff;
+  --surface-dark: #10231d;
+  --text: #10231d;
+  --muted: #667a72;
+  --line: rgba(16, 35, 29, 0.12);
+  --accent: #00a676;
+  --accent-dark: #08745a;
+  --accent-soft: rgba(0, 166, 118, 0.12);
+  --danger: #c33126;
+  --warning: #d9902f;
+  --shadow: 0 22px 60px rgba(18, 38, 32, 0.14);
+}
+
+body {
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top left, rgba(0, 166, 118, 0.24), transparent 28rem),
+    radial-gradient(circle at 80% 10%, rgba(45, 212, 191, 0.18), transparent 24rem),
+    linear-gradient(135deg, #f8fbf9 0%, var(--page-bg) 52%, #e7f2ed 100%);
+  color: var(--text);
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background-image:
+    linear-gradient(rgba(16, 35, 29, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 35, 29, 0.045) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.72), transparent 75%);
+}
+
 #app {
-  max-width: 960px;
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1180px);
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.25rem;
   font-weight: normal;
 }
 
-a,
-.green {
+a {
+  color: inherit;
   text-decoration: none;
-  color: #23614f;
-  transition: 0.4s;
-  padding: 3px;
 }
 
-@media (hover: hover) {
-  a:hover {
-    background-color: rgba(35, 97, 79, 0.12);
-  }
+button,
+input,
+select {
+  font: inherit;
 }
 
-@media (min-width: 1024px) {
-  body {
-    display: block;
-  }
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
 
+@media (min-width: 760px) {
   #app {
-    padding: 0 2rem;
+    padding: 1.5rem 2rem 3rem;
   }
 }

@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { authState } from '../auth'
 import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
@@ -10,14 +11,42 @@ const router = createRouter({
       component: HomeView,
     },
     {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: () => import('../views/DashboardView.vue'),
+      meta: {
+        requiresAuth: true,
+      },
+    },
+    {
+      path: '/einstellungen',
+      name: 'settings',
+      component: () => import('../views/SettingsView.vue'),
+      meta: {
+        requiresAuth: true,
+      },
+    },
+    {
+      path: '/impressum',
+      name: 'impressum',
+      component: () => import('../views/ImpressumView.vue'),
     },
   ],
+})
+
+router.beforeEach((to) => {
+  if (to.name === 'login' && authState.isLoggedIn) {
+    return '/dashboard'
+  }
+
+  if (to.meta.requiresAuth && !authState.isLoggedIn) {
+    return '/login'
+  }
 })
 
 export default router
