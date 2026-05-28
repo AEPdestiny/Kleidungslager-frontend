@@ -24,6 +24,14 @@ const router = createRouter({
       },
     },
     {
+      path: '/kleidung/:id',
+      name: 'kleidung-detail',
+      component: () => import('../views/KleidungsDetailView.vue'),
+      meta: {
+        requiresAuth: true,
+      },
+    },
+    {
       path: '/einstellungen',
       name: 'settings',
       component: () => import('../views/SettingsView.vue'),

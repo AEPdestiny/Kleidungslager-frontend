@@ -85,6 +85,11 @@ function zuruecksetzen(): void {
           Kompaktere Kleidungskarten verwenden
         </label>
 
+        <label class="switch-row">
+          <input v-model="settingsState.darkMode" type="checkbox" />
+          Dunkelmodus verwenden
+        </label>
+
         <button type="submit">Speichern</button>
       </form>
 

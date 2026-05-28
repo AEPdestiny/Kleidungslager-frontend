@@ -1,6 +1,15 @@
+<script setup lang="ts">
+import { settingsState } from '../settings'
+</script>
+
 <template>
   <main class="impressum-view">
-    <section class="impressum">
+    <section
+      :class="[
+        'impressum',
+        { 'dunkelmodus-impressum': settingsState.darkMode },
+      ]"
+    >
       <p class="eyebrow">Rechtliches</p>
       <h1>Impressum</h1>
 
@@ -79,5 +88,28 @@ dd {
   color: var(--text);
   font-weight: 900;
   overflow-wrap: anywhere;
+}
+
+.impressum.dunkelmodus-impressum {
+  border-color: rgba(238, 248, 244, 0.22);
+  background: rgba(9, 28, 22, 0.96);
+}
+
+.impressum.dunkelmodus-impressum dl div {
+  border-color: rgba(238, 248, 244, 0.18);
+  background: rgba(5, 18, 14, 0.92);
+}
+
+.impressum.dunkelmodus-impressum dl div:hover {
+  border-color: rgba(71, 240, 170, 0.38);
+  background: rgba(12, 39, 30, 0.94);
+}
+
+.impressum.dunkelmodus-impressum dt {
+  color: #9fb3ac;
+}
+
+.impressum.dunkelmodus-impressum dd {
+  color: #eef8f4;
 }
 </style>

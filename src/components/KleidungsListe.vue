@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import axios from 'axios'
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { settingsState } from '../settings'
 
 type Kleidungsstueck = {
@@ -24,14 +25,23 @@ type NeuesKleidungsstueck = {
   bild: string
 }
 
+type VerlaufsEintrag = {
+  id: number
+  text: string
+}
+
 const kleidungsstuecke =
   ref<Kleidungsstueck[]>([])
+const router = useRouter()
 
 const bestandBearbeitung =
   ref<Record<number, number>>({})
 
 const lagerBearbeitung =
   ref<Record<number, number>>({})
+
+const bildBearbeitung =
+  ref<Record<number, string>>({})
 
 const zuLoeschendeId =
   ref<number | null>(null)
@@ -41,14 +51,22 @@ const kategorieFilter = ref('')
 const groesseFilter = ref('')
 const lagerFilter = ref('')
 const sortierung = ref(settingsState.defaultSort)
+const ansicht = ref(settingsState.compactList ? 'kompakt' : 'karten')
 const erfolgsmeldung = ref('')
 const geoeffneteKarteId =
   ref<number | null>(null)
+const detailKleidungsstueck =
+  ref<Kleidungsstueck | null>(null)
+const bestandsverlauf =
+  ref<VerlaufsEintrag[]>([])
+const ladeFehler = ref('')
 const bildInput =
   ref<HTMLInputElement | null>(null)
 const bildDateiname = ref('')
 
 let erfolgsTimeout: number | undefined
+let naechsteVerlaufId = 1
+const verlaufStorageKey = 'kleidungslager-bestandsverlauf'
 
 const neuesKleidungsstueck = ref<NeuesKleidungsstueck>({
   bezeichnung: '',
@@ -78,6 +96,91 @@ const lagerAnzahl = computed(() => {
   return new Set(lager).size
 })
 
+const niedrigerBestandAnzahl = computed(() => {
+  return kleidungsstuecke.value.filter((teil) => {
+    return teil.lagerbestand <= settingsState.lowStockThreshold
+  }).length
+})
+
+const nachbestellText = computed(() => {
+  if (niedrigerBestandAnzahl.value === 0) {
+    return ''
+  }
+
+  if (niedrigerBestandAnzahl.value === 1) {
+    return '1 Artikel muss nachbestellt werden.'
+  }
+
+  return niedrigerBestandAnzahl.value + ' Artikel müssen nachbestellt werden.'
+})
+
+const kritischeArtikelListe = computed(() => {
+  return kleidungsstuecke.value
+    .filter((teil) => {
+      return teil.lagerbestand <= settingsState.lowStockThreshold
+    })
+    .sort((a, b) => {
+      return a.lagerbestand - b.lagerbestand
+    })
+    .map((teil) => {
+      return teil.bezeichnung + ' (' + teil.lagerbestand + ')'
+    })
+})
+
+const kritischeArtikel = computed(() => {
+  if (kritischeArtikelListe.value.length === 0) {
+    return 'Keine'
+  }
+
+  const angezeigteTeile = kritischeArtikelListe.value.slice(0, 3)
+  const restlicheTeile = kritischeArtikelListe.value.length - angezeigteTeile.length
+
+  if (restlicheTeile > 0) {
+    return angezeigteTeile.join(', ') + ' + ' + restlicheTeile + ' weitere'
+  }
+
+  return angezeigteTeile.join(', ')
+})
+
+const kritischeArtikelAlle = computed(() => {
+  return kritischeArtikelListe.value.join(', ')
+})
+
+const kleidungProLagerListe = computed(() => {
+  const lagerZaehler: Record<number, number> = {}
+
+  kleidungsstuecke.value.forEach((teil) => {
+    lagerZaehler[teil.lager] = (lagerZaehler[teil.lager] ?? 0) + 1
+  })
+
+  return Object.entries(lagerZaehler)
+    .sort((a, b) => {
+      return Number(a[0]) - Number(b[0])
+    })
+    .map(([lager, anzahl]) => {
+      return 'Lager ' + lager + ': ' + anzahl
+    })
+})
+
+const kleidungProLager = computed(() => {
+  if (kleidungProLagerListe.value.length === 0) {
+    return '-'
+  }
+
+  const angezeigteLager = kleidungProLagerListe.value.slice(0, 3)
+  const restlicheLager = kleidungProLagerListe.value.length - angezeigteLager.length
+
+  if (restlicheLager > 0) {
+    return angezeigteLager.join(', ') + ' + ' + restlicheLager + ' weitere'
+  }
+
+  return angezeigteLager.join(', ')
+})
+
+const kleidungProLagerAlle = computed(() => {
+  return kleidungProLagerListe.value.join(', ')
+})
+
 const kategorien = computed(() => {
   return [...new Set(kleidungsstuecke.value.map((teil) => {
     return teil.kategorie
@@ -98,11 +201,38 @@ const lagerPlaetze = computed(() => {
   })
 })
 
+const istTabellenAnsicht = computed(() => {
+  return ansicht.value === 'tabelle'
+})
+
+const istKompaktAnsicht = computed(() => {
+  return ansicht.value === 'kompakt'
+})
+
+function artikelnummer(id: number): string {
+  return 'KL-' + String(id).padStart(4, '0')
+}
+
+function kategorieClass(kategorie: string): string {
+  return 'kategorie-' + kategorie.toLowerCase()
+}
+
+function oeffneDetailseite(id: number): void {
+  router.push('/kleidung/' + id)
+}
+
 const gefilterteKleidungsstuecke = computed(() => {
-  const suche = suchbegriff.value.trim().toLowerCase()
+  const suchWoerter = suchbegriff.value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((wort) => {
+      return wort !== ''
+    })
 
   const gefiltert = kleidungsstuecke.value.filter((teil) => {
     const suchText = [
+      artikelnummer(teil.id),
       teil.bezeichnung,
       teil.kategorie,
       teil.size,
@@ -112,7 +242,9 @@ const gefilterteKleidungsstuecke = computed(() => {
     ].join(' ').toLowerCase()
 
     const passtZurSuche =
-      suche === '' || suchText.includes(suche)
+      suchWoerter.length === 0 || suchWoerter.every((wort) => {
+        return suchText.includes(wort)
+      })
 
     const passtZurKategorie =
       kategorieFilter.value === '' || teil.kategorie === kategorieFilter.value
@@ -165,17 +297,45 @@ function zeigeErfolg(text: string): void {
   }, 2500)
 }
 
+function ladeVerlauf(): void {
+  const gespeicherterVerlauf = localStorage.getItem(verlaufStorageKey)
+
+  if (gespeicherterVerlauf === null) {
+    return
+  }
+
+  bestandsverlauf.value = JSON.parse(gespeicherterVerlauf)
+  naechsteVerlaufId =
+    Math.max(0, ...bestandsverlauf.value.map((eintrag) => eintrag.id)) + 1
+}
+
+function fuegeVerlaufHinzu(text: string): void {
+  const datum = new Date().toLocaleDateString('de-DE')
+
+  bestandsverlauf.value.unshift({
+    id: naechsteVerlaufId,
+    text: datum + ': ' + text,
+  })
+
+  naechsteVerlaufId += 1
+  bestandsverlauf.value = bestandsverlauf.value.slice(0, 8)
+  localStorage.setItem(verlaufStorageKey, JSON.stringify(bestandsverlauf.value))
+}
+
 function setzeBearbeitung(): void {
   const neueBestaende: Record<number, number> = {}
   const neueLager: Record<number, number> = {}
+  const neueBilder: Record<number, string> = {}
 
   kleidungsstuecke.value.forEach((teil) => {
     neueBestaende[teil.id] = teil.lagerbestand
     neueLager[teil.id] = teil.lager
+    neueBilder[teil.id] = teil.bild ?? ''
   })
 
   bestandBearbeitung.value = neueBestaende
   lagerBearbeitung.value = neueLager
+  bildBearbeitung.value = neueBilder
 }
 
 function ersetzeOderFuegeHinzu(gespeichertesTeil: Kleidungsstueck): void {
@@ -194,9 +354,14 @@ function ersetzeOderFuegeHinzu(gespeichertesTeil: Kleidungsstueck): void {
 
   lagerBearbeitung.value[gespeichertesTeil.id] =
     gespeichertesTeil.lager
+
+  bildBearbeitung.value[gespeichertesTeil.id] =
+    gespeichertesTeil.bild ?? ''
 }
 
 function requestKleidung(): void {
+  ladeFehler.value = ''
+
   axios
     .get<Kleidungsstueck[]>(getKleidungEndpoint())
     .then((response) => {
@@ -205,6 +370,7 @@ function requestKleidung(): void {
     })
     .catch((error) => {
       console.log(error)
+      ladeFehler.value = 'Backend konnte nicht erreicht werden.'
     })
 }
 
@@ -217,6 +383,13 @@ function createKleidung(): void {
     .then((response) => {
       ersetzeOderFuegeHinzu(response.data)
       zeigeErfolg('Kleidungsstück gespeichert.')
+      fuegeVerlaufHinzu(
+        'Artikel erstellt: '
+          + response.data.bezeichnung
+          + ' mit Bestand '
+          + response.data.lagerbestand
+          + ' gespeichert'
+      )
 
       neuesKleidungsstueck.value = {
         bezeichnung: '',
@@ -246,6 +419,60 @@ function aendereBestand(id: number, veraenderung: number): void {
   bestandBearbeitung.value[id] = Math.max(0, neuerBestand)
 }
 
+function aendereLager(id: number, veraenderung: number): void {
+  const aktuellesLager = lagerBearbeitung.value[id] ?? 1
+  const neuesLager = aktuellesLager + veraenderung
+
+  lagerBearbeitung.value[id] = Math.max(1, neuesLager)
+}
+
+function aendereNeuesLager(veraenderung: number): void {
+  const neuesLager = neuesKleidungsstueck.value.lager + veraenderung
+
+  neuesKleidungsstueck.value.lager = Math.max(1, neuesLager)
+}
+
+function aendereNeuenBestand(veraenderung: number): void {
+  const neuerBestand = neuesKleidungsstueck.value.lagerbestand + veraenderung
+
+  neuesKleidungsstueck.value.lagerbestand = Math.max(0, neuerBestand)
+}
+
+function blockiereUngueltigeZahl(event: KeyboardEvent): void {
+  if (['e', 'E', '+', '-', '.', ','].includes(event.key)) {
+    event.preventDefault()
+  }
+}
+
+function korrigierePositiveGanzzahl(
+  wert: number,
+  minimum: number,
+): number {
+  if (!Number.isFinite(wert)) {
+    return minimum
+  }
+
+  return Math.max(minimum, Math.floor(wert))
+}
+
+function korrigiereNeuesLager(): void {
+  neuesKleidungsstueck.value.lager =
+    korrigierePositiveGanzzahl(neuesKleidungsstueck.value.lager, 1)
+}
+
+function korrigiereNeuenBestand(): void {
+  neuesKleidungsstueck.value.lagerbestand =
+    korrigierePositiveGanzzahl(neuesKleidungsstueck.value.lagerbestand, 0)
+}
+
+function korrigiereBearbeitung(id: number): void {
+  bestandBearbeitung.value[id] =
+    korrigierePositiveGanzzahl(bestandBearbeitung.value[id] ?? 0, 0)
+
+  lagerBearbeitung.value[id] =
+    korrigierePositiveGanzzahl(lagerBearbeitung.value[id] ?? 1, 1)
+}
+
 function bildAuswaehlen(event: Event): void {
   const input = event.target as HTMLInputElement
   const bildDatei = input.files?.[0]
@@ -269,8 +496,47 @@ function oeffneBildAuswahl(): void {
   bildInput.value?.click()
 }
 
+function bildBearbeiten(event: Event, id: number): void {
+  const input = event.target as HTMLInputElement
+  const bildDatei = input.files?.[0]
+
+  if (bildDatei === undefined) {
+    return
+  }
+
+  const reader = new FileReader()
+
+  reader.addEventListener('load', () => {
+    const altesTeil = kleidungsstuecke.value.find((teil) => {
+      return teil.id === id
+    })
+
+    bildBearbeitung.value[id] = String(reader.result)
+    updateKleidung(id)
+    if (altesTeil !== undefined) {
+      fuegeVerlaufHinzu('Bild geändert: ' + altesTeil.bezeichnung)
+    }
+    input.value = ''
+  })
+
+  reader.readAsDataURL(bildDatei)
+}
+
+function bildEntfernen(id: number): void {
+  const altesTeil = kleidungsstuecke.value.find((teil) => {
+    return teil.id === id
+  })
+
+  bildBearbeitung.value[id] = ''
+  updateKleidung(id)
+
+  if (altesTeil !== undefined) {
+    fuegeVerlaufHinzu('Bild entfernt: ' + altesTeil.bezeichnung)
+  }
+}
+
 function karteUmschalten(id: number): void {
-  if (!settingsState.compactList) {
+  if (!istKompaktAnsicht.value) {
     return
   }
 
@@ -281,17 +547,52 @@ function karteUmschalten(id: number): void {
   }
 }
 
+function karteAnklicken(teil: Kleidungsstueck): void {
+  if (istKompaktAnsicht.value) {
+    karteUmschalten(teil.id)
+  } else {
+    oeffneDetailseite(teil.id)
+  }
+}
+
 function updateKleidung(id: number): void {
   const endpoint = getKleidungEndpoint() + '/' + id + '/bestand'
+  const altesTeil = kleidungsstuecke.value.find((teil) => {
+    return teil.id === id
+  })
 
   axios
     .put<Kleidungsstueck>(endpoint, {
       lagerbestand: bestandBearbeitung.value[id],
       lager: lagerBearbeitung.value[id],
+      bild: bildBearbeitung.value[id],
     })
     .then((response) => {
       ersetzeOderFuegeHinzu(response.data)
       zeigeErfolg('Kleidungsstück aktualisiert.')
+
+      if (altesTeil !== undefined && altesTeil.lagerbestand !== response.data.lagerbestand) {
+        fuegeVerlaufHinzu(
+          'Bestand geändert: '
+            + response.data.bezeichnung
+            + ' von '
+            + altesTeil.lagerbestand
+            + ' auf '
+            + response.data.lagerbestand
+            + ' geändert'
+        )
+      }
+
+      if (altesTeil !== undefined && altesTeil.lager !== response.data.lager) {
+        fuegeVerlaufHinzu(
+          'Lager geändert: '
+            + response.data.bezeichnung
+            + ' von Lager '
+            + altesTeil.lager
+            + ' auf Lager '
+            + response.data.lager
+        )
+      }
     })
     .catch((error) => {
       console.log(error)
@@ -305,6 +606,9 @@ function deleteKleidung(): void {
 
   const id = zuLoeschendeId.value
   const endpoint = getKleidungEndpoint() + '/' + id
+  const geloeschtesTeil = kleidungsstuecke.value.find((teil) => {
+    return teil.id === id
+  })
 
   axios
     .delete(endpoint)
@@ -315,8 +619,13 @@ function deleteKleidung(): void {
         })
       delete bestandBearbeitung.value[id]
       delete lagerBearbeitung.value[id]
+      delete bildBearbeitung.value[id]
       zuLoeschendeId.value = null
       zeigeErfolg('Kleidungsstück gelöscht.')
+
+      if (geloeschtesTeil !== undefined) {
+        fuegeVerlaufHinzu('Artikel gelöscht: ' + geloeschtesTeil.bezeichnung)
+      }
     })
     .catch((error) => {
       console.log(error)
@@ -331,7 +640,50 @@ function frageLoeschen(id: number): void {
   zuLoeschendeId.value = id
 }
 
+function detailSchliessen(): void {
+  detailKleidungsstueck.value = null
+}
+
+function csvExportieren(): void {
+  const kopf = [
+    'id',
+    'artikelnummer',
+    'bezeichnung',
+    'kategorie',
+    'groesse',
+    'farbe',
+    'lager',
+    'bestand',
+  ]
+
+  const zeilen = kleidungsstuecke.value.map((teil) => {
+    return [
+      teil.id,
+      artikelnummer(teil.id),
+      teil.bezeichnung,
+      teil.kategorie,
+      teil.size,
+      teil.farbe,
+      teil.lager,
+      teil.lagerbestand,
+    ].map((wert) => {
+      return '"' + String(wert).replaceAll('"', '""') + '"'
+    }).join(';')
+  })
+
+  const csv = [kopf.join(';'), ...zeilen].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = 'kleidungslager-export.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 onMounted(() => {
+  ladeVerlauf()
   requestKleidung()
 })
 </script>
@@ -341,6 +693,15 @@ onMounted(() => {
     <div v-if="erfolgsmeldung !== ''" class="toast">
       {{ erfolgsmeldung }}
     </div>
+
+    <div v-if="ladeFehler !== ''" class="error-message">
+      {{ ladeFehler }}
+    </div>
+
+    <section v-if="nachbestellText !== ''" class="dashboard-warning">
+      <span>Nachbestellung</span>
+      <strong>{{ nachbestellText }}</strong>
+    </section>
 
     <div class="stats-grid">
       <article>
@@ -357,7 +718,63 @@ onMounted(() => {
         <span>Lagerplätze</span>
         <strong>{{ lagerAnzahl }}</strong>
       </article>
+
+      <article>
+        <span>Niedrig</span>
+        <strong>{{ niedrigerBestandAnzahl }}</strong>
+      </article>
     </div>
+
+    <div class="insights-grid">
+      <article
+        :class="[
+          'insight-card',
+          { 'dunkelmodus-insight': settingsState.darkMode },
+        ]"
+      >
+        <span>Kritische Artikel</span>
+        <strong>{{ kritischeArtikel }}</strong>
+        <p v-if="kritischeArtikelAlle !== ''" class="insight-tooltip">
+          {{ kritischeArtikelAlle }}
+        </p>
+      </article>
+
+      <article
+        :class="[
+          'insight-card',
+          { 'dunkelmodus-insight': settingsState.darkMode },
+        ]"
+      >
+        <span>Kleidung pro Lager</span>
+        <strong>{{ kleidungProLager }}</strong>
+        <p v-if="kleidungProLagerAlle !== ''" class="insight-tooltip">
+          {{ kleidungProLagerAlle }}
+        </p>
+      </article>
+
+      <button type="button" @click="csvExportieren">
+        CSV exportieren
+      </button>
+    </div>
+
+    <section class="verlauf-panel">
+      <div class="list-head">
+        <div>
+          <p class="eyebrow">Aktivitätsprotokoll</p>
+          <h2>Letzte Aktivitäten</h2>
+        </div>
+      </div>
+
+      <ul v-if="bestandsverlauf.length > 0">
+        <li v-for="eintrag in bestandsverlauf" :key="eintrag.id">
+          {{ eintrag.text }}
+        </li>
+      </ul>
+
+      <p v-else class="empty-state">
+        Noch keine Aktivitäten gespeichert.
+      </p>
+    </section>
 
     <div class="workspace-grid">
       <form class="formular" @submit.prevent="createKleidung">
@@ -404,22 +821,38 @@ onMounted(() => {
 
         <label>
           Lager
-          <input
-            v-model.number="neuesKleidungsstueck.lager"
-            min="1"
-            required
-            type="number"
-          />
+          <span class="number-field">
+            <input
+              v-model.number="neuesKleidungsstueck.lager"
+              min="1"
+              required
+              type="number"
+              @blur="korrigiereNeuesLager"
+              @keydown="blockiereUngueltigeZahl"
+            />
+            <span class="number-buttons">
+              <button type="button" @click="aendereNeuesLager(1)">▲</button>
+              <button type="button" @click="aendereNeuesLager(-1)">▼</button>
+            </span>
+          </span>
         </label>
 
         <label>
           Bestand
-          <input
-            v-model.number="neuesKleidungsstueck.lagerbestand"
-            min="0"
-            required
-            type="number"
-          />
+          <span class="number-field">
+            <input
+              v-model.number="neuesKleidungsstueck.lagerbestand"
+              min="0"
+              required
+              type="number"
+              @blur="korrigiereNeuenBestand"
+              @keydown="blockiereUngueltigeZahl"
+            />
+            <span class="number-buttons">
+              <button type="button" @click="aendereNeuenBestand(1)">▲</button>
+              <button type="button" @click="aendereNeuenBestand(-1)">▼</button>
+            </span>
+          </span>
         </label>
 
         <div class="bild-bereich">
@@ -472,7 +905,7 @@ onMounted(() => {
             Suche
             <input
               v-model="suchbegriff"
-              placeholder="Pullover, Schwarz oder Lager 1"
+              placeholder="Suche nach Kleidung"
               type="search"
             />
           </label>
@@ -528,19 +961,81 @@ onMounted(() => {
               <option value="kategorie">Kategorie</option>
             </select>
           </label>
+
+          <label>
+            Ansicht
+            <select v-model="ansicht">
+              <option value="karten">Kartenansicht</option>
+              <option value="tabelle">Tabellenansicht</option>
+              <option value="kompakt">Kompaktansicht</option>
+            </select>
+          </label>
         </div>
 
-        <div class="liste">
+        <div v-if="istTabellenAnsicht" class="tabellen-ansicht">
+          <table>
+            <thead>
+              <tr>
+                <th>Artikelnummer</th>
+                <th>Bezeichnung</th>
+                <th>Kategorie</th>
+                <th>Größe</th>
+                <th>Farbe</th>
+                <th>Lager</th>
+                <th>Bestand</th>
+                <th>Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="teil in gefilterteKleidungsstuecke"
+                :key="teil.id"
+                :class="{
+                  'niedriger-bestand-zeile':
+                    teil.lagerbestand <= settingsState.lowStockThreshold,
+                }"
+              >
+                <td>{{ artikelnummer(teil.id) }}</td>
+                <td>{{ teil.bezeichnung }}</td>
+                <td>
+                  <span :class="['kategorie-badge', kategorieClass(teil.kategorie)]">
+                    {{ teil.kategorie }}
+                  </span>
+                </td>
+                <td>{{ teil.size }}</td>
+                <td>{{ teil.farbe }}</td>
+                <td>Lager {{ teil.lager }}</td>
+                <td>{{ teil.lagerbestand }} Stk.</td>
+                <td>
+                  <button type="button" @click="oeffneDetailseite(teil.id)">
+                    Öffnen
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p v-if="gefilterteKleidungsstuecke.length === 0" class="empty-state">
+            Keine passenden Kleidungsstücke gefunden.
+          </p>
+        </div>
+
+        <div v-else class="liste">
           <article
             v-for="teil in gefilterteKleidungsstuecke"
             :key="teil.id"
             :class="[
               'kleidungsstueck',
               { 'niedriger-bestand': teil.lagerbestand <= settingsState.lowStockThreshold },
-              { 'kompakt': settingsState.compactList },
+              { 'dunkelmodus-karte': settingsState.darkMode },
+              {
+                'dunkelmodus-niedriger-bestand':
+                  settingsState.darkMode && teil.lagerbestand <= settingsState.lowStockThreshold,
+              },
+              { 'kompakt': istKompaktAnsicht },
               { 'geoeffnet': geoeffneteKarteId === teil.id },
             ]"
-            @click="karteUmschalten(teil.id)"
+            @click="karteAnklicken(teil)"
           >
             <div class="item-main">
               <img
@@ -552,6 +1047,7 @@ onMounted(() => {
               <span v-else class="item-icon">{{ teil.kategorie.charAt(0) }}</span>
               <div>
                 <div class="item-title">
+                  <span class="artikelnummer">{{ artikelnummer(teil.id) }}</span>
                   <h3>{{ teil.bezeichnung }}</h3>
                   <span class="compact-stock">{{ teil.lagerbestand }} Stk.</span>
                   <span
@@ -562,7 +1058,9 @@ onMounted(() => {
                   </span>
                 </div>
                 <p class="details">
-                  <span>{{ teil.kategorie }}</span>
+                  <span :class="['kategorie-badge', kategorieClass(teil.kategorie)]">
+                    {{ teil.kategorie }}
+                  </span>
                   <span>Größe {{ teil.size }}</span>
                   <span>{{ teil.farbe }}</span>
                   <span>Lager {{ teil.lager }}</span>
@@ -571,14 +1069,14 @@ onMounted(() => {
             </div>
 
             <span
-              v-if="settingsState.compactList && geoeffneteKarteId !== teil.id"
+              v-if="istKompaktAnsicht && geoeffneteKarteId !== teil.id"
               class="compact-hint"
             >
               Bearbeiten
             </span>
 
             <div
-              v-if="!settingsState.compactList || geoeffneteKarteId === teil.id"
+              v-if="!istKompaktAnsicht || geoeffneteKarteId === teil.id"
               class="aktionen"
               @click.stop
             >
@@ -604,20 +1102,36 @@ onMounted(() => {
 
               <label class="bestand-editor">
                 Bestand
-                <input
-                  v-model.number="bestandBearbeitung[teil.id]"
-                  min="0"
-                  type="number"
-                />
+                <span class="number-field">
+                  <input
+                    v-model.number="bestandBearbeitung[teil.id]"
+                    min="0"
+                    type="number"
+                    @blur="korrigiereBearbeitung(teil.id)"
+                    @keydown="blockiereUngueltigeZahl"
+                  />
+                  <span class="number-buttons">
+                    <button type="button" @click="aendereBestand(teil.id, 1)">▲</button>
+                    <button type="button" @click="aendereBestand(teil.id, -1)">▼</button>
+                  </span>
+                </span>
               </label>
 
               <label class="lager-editor">
                 Lager
-                <input
-                  v-model.number="lagerBearbeitung[teil.id]"
-                  min="1"
-                  type="number"
-                />
+                <span class="number-field">
+                  <input
+                    v-model.number="lagerBearbeitung[teil.id]"
+                    min="1"
+                    type="number"
+                    @blur="korrigiereBearbeitung(teil.id)"
+                    @keydown="blockiereUngueltigeZahl"
+                  />
+                  <span class="number-buttons">
+                    <button type="button" @click="aendereLager(teil.id, 1)">▲</button>
+                    <button type="button" @click="aendereLager(teil.id, -1)">▼</button>
+                  </span>
+                </span>
               </label>
 
               <button
@@ -630,6 +1144,35 @@ onMounted(() => {
                 @click="updateKleidung(teil.id)"
               >
                 Aktualisieren
+              </button>
+
+              <input
+                :id="'bild-edit-' + teil.id"
+                accept="image/*"
+                class="bild-input"
+                type="file"
+                @change="bildBearbeiten($event, teil.id)"
+              />
+
+              <label class="small-upload-button" :for="'bild-edit-' + teil.id">
+                Bild ändern
+              </label>
+
+              <button
+                v-if="teil.bild"
+                class="remove-image-button"
+                type="button"
+                @click="bildEntfernen(teil.id)"
+              >
+                Bild entfernen
+              </button>
+
+              <button
+                class="detail-button"
+                type="button"
+                @click="oeffneDetailseite(teil.id)"
+              >
+                Details
               </button>
 
               <button
@@ -669,6 +1212,65 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <div
+      v-if="detailKleidungsstueck !== null"
+      :class="[
+        'modal-backdrop',
+        { 'dunkelmodus-backdrop': settingsState.darkMode },
+      ]"
+      @click="detailSchliessen"
+    >
+      <div
+        :class="[
+          'modal',
+          'detail-modal',
+          { 'dunkelmodus-modal': settingsState.darkMode },
+        ]"
+        @click.stop
+      >
+        <img
+          v-if="detailKleidungsstueck.bild"
+          :src="detailKleidungsstueck.bild"
+          alt=""
+          class="detail-bild"
+        />
+        <div v-else class="detail-bild detail-bild-placeholder">
+          Kein Bild
+        </div>
+
+        <h3>{{ detailKleidungsstueck.bezeichnung }}</h3>
+
+        <dl>
+          <div>
+            <dt>Kategorie</dt>
+            <dd>{{ detailKleidungsstueck.kategorie }}</dd>
+          </div>
+          <div>
+            <dt>Größe</dt>
+            <dd>{{ detailKleidungsstueck.size }}</dd>
+          </div>
+          <div>
+            <dt>Farbe</dt>
+            <dd>{{ detailKleidungsstueck.farbe }}</dd>
+          </div>
+          <div>
+            <dt>Lager</dt>
+            <dd>{{ detailKleidungsstueck.lager }}</dd>
+          </div>
+          <div>
+            <dt>Bestand</dt>
+            <dd>{{ detailKleidungsstueck.lagerbestand }} Stk.</dd>
+          </div>
+        </dl>
+
+        <div class="modal-actions">
+          <button type="button" @click="detailSchliessen">
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -693,7 +1295,41 @@ onMounted(() => {
   font-weight: 900;
 }
 
+.error-message {
+  padding: 1rem;
+  border: 1px solid rgba(195, 49, 38, 0.35);
+  border-radius: 8px;
+  background: rgba(195, 49, 38, 0.1);
+  color: var(--danger);
+  font-weight: 900;
+}
+
+.dashboard-warning {
+  padding: 1rem;
+  border: 1px solid rgba(217, 144, 47, 0.58);
+  border-radius: 8px;
+  background: rgba(255, 246, 229, 0.88);
+  box-shadow: var(--shadow);
+}
+
+.dashboard-warning span {
+  display: block;
+  color: #8a5200;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dashboard-warning strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: #10231d;
+  font-size: 1.1rem;
+  font-weight: 950;
+}
+
 .stats-grid,
+.insights-grid,
 .workspace-grid,
 .tools-panel {
   display: grid;
@@ -705,8 +1341,10 @@ onMounted(() => {
 }
 
 .stats-grid article,
+.insights-grid article,
 .formular,
-.listen-panel {
+.listen-panel,
+.verlauf-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -719,6 +1357,7 @@ onMounted(() => {
 }
 
 .stats-grid span,
+.insights-grid span,
 .eyebrow {
   color: var(--accent-dark);
   font-size: 0.78rem;
@@ -732,6 +1371,107 @@ onMounted(() => {
   color: var(--text);
   font-size: 2rem;
   font-weight: 950;
+}
+
+.insights-grid {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  align-items: stretch;
+}
+
+.insights-grid article,
+.verlauf-panel {
+  padding: 1rem;
+}
+
+.insight-card {
+  position: relative;
+}
+
+.insights-grid strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text);
+  font-weight: 950;
+}
+
+.insight-tooltip {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(100% + 0.55rem);
+  z-index: 12;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+  font-weight: 850;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.25rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.insight-card:hover .insight-tooltip,
+.insight-card:focus-within .insight-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.insights-grid button {
+  align-self: stretch;
+}
+
+.tabellen-ansicht {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text);
+}
+
+th,
+td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--accent-dark);
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+td {
+  color: var(--text);
+  font-weight: 800;
+}
+
+td button {
+  min-height: 2.2rem;
+  padding: 0 0.75rem;
+}
+
+.niedriger-bestand-zeile {
+  background: rgba(217, 144, 47, 0.1);
+}
+
+.verlauf-panel ul {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .formular,
@@ -808,8 +1548,64 @@ select {
   color: var(--text);
 }
 
+input[type='number'] {
+  appearance: textfield;
+  padding-right: 3rem;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 input[type='file'] {
   padding: 0.5rem;
+}
+
+.number-field {
+  position: relative;
+  display: block;
+}
+
+.number-buttons {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  display: grid;
+  gap: 0.12rem;
+  opacity: 0;
+  transform: translateY(-50%) translateX(0.2rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.number-field:hover .number-buttons,
+.number-field:focus-within .number-buttons {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+.number-buttons button {
+  display: grid;
+  width: 1.45rem;
+  height: 1rem;
+  min-height: 0;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(71, 240, 170, 0.32);
+  border-radius: 999px;
+  background: rgba(71, 240, 170, 0.14);
+  color: var(--accent-dark);
+  font-size: 0.55rem;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.number-buttons button:hover {
+  background: var(--accent);
+  color: #062019;
 }
 
 .bild-input {
@@ -930,6 +1726,21 @@ button {
 .kleidungsstueck.niedriger-bestand {
   border-color: rgba(217, 144, 47, 0.55);
   background: rgba(255, 246, 229, 0.86);
+}
+
+.kleidungsstueck.dunkelmodus-karte {
+  border-color: rgba(238, 248, 244, 0.2) !important;
+  background: rgba(9, 28, 22, 0.96) !important;
+}
+
+.kleidungsstueck.dunkelmodus-niedriger-bestand {
+  border-color: rgba(217, 144, 47, 0.62) !important;
+  background: rgba(42, 32, 15, 0.96) !important;
+}
+
+.kleidungsstueck.dunkelmodus-niedriger-bestand .warning-badge {
+  background: rgba(217, 144, 47, 0.18);
+  color: #f6c46d;
 }
 
 .kleidungsstueck.kompakt {
@@ -1130,6 +1941,55 @@ button {
   gap: 0.5rem;
 }
 
+.artikelnummer {
+  padding: 0.18rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent-dark);
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.kategorie-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 1.45rem;
+  padding: 0.16rem 0.48rem;
+  border-radius: 999px;
+  color: #10231d;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.kategorie-hemd {
+  background: #9ee7ff;
+}
+
+.kategorie-hose {
+  background: #b8cdf8;
+}
+
+.kategorie-kleid {
+  background: #ffc1dc;
+}
+
+.kategorie-jacke {
+  background: #ffd89e;
+}
+
+.kategorie-schuhe {
+  background: #c7f2a4;
+}
+
+.kategorie-accessoires {
+  background: #d8c5ff;
+}
+
+.kategorie-sonstiges {
+  background: #d8dedb;
+}
+
 .compact-stock {
   display: none;
 }
@@ -1202,7 +2062,10 @@ button {
 }
 
 .update-button,
-.delete-button {
+.delete-button,
+.detail-button,
+.remove-image-button,
+.small-upload-button {
   min-height: 2.7rem;
   padding: 0 0.85rem;
 }
@@ -1213,6 +2076,56 @@ button {
 
 .delete-button {
   background: var(--danger);
+}
+
+.detail-button,
+.small-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--surface-dark);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.remove-image-button {
+  background: #e5e7eb;
+  color: #10231d;
+}
+
+:global(body.dark-mode) .kleidungsstueck,
+:global(body.dark-mode) .bild-bereich,
+:global(body.dark-mode) .tools-panel,
+:global(body.dark-mode) .empty-state {
+  border-color: rgba(238, 248, 244, 0.2);
+  background: rgba(9, 28, 22, 0.96) !important;
+}
+
+:global(body.dark-mode) .bild-platzhalter {
+  background: rgba(16, 35, 29, 0.88);
+  color: #c4d4ce;
+}
+
+:global(body.dark-mode) .kleidungsstueck.niedriger-bestand {
+  border-color: rgba(217, 144, 47, 0.62);
+  background: rgba(42, 32, 15, 0.96) !important;
+}
+
+:global(body.dark-mode) .kleidungsstueck.niedriger-bestand .warning-badge {
+  background: rgba(217, 144, 47, 0.18);
+  color: #f6c46d;
+}
+
+:global(body.dark-mode) .compact-hint {
+  background: rgba(9, 28, 22, 0.92);
+  color: #5ee0b2;
+}
+
+:global(body.dark-mode) .remove-image-button {
+  background: #d7dedb;
+  color: #10231d;
 }
 
 .modal-backdrop {
@@ -1255,6 +2168,123 @@ button {
 .modal-actions button {
   width: 7rem;
   min-height: 2.8rem;
+}
+
+.detail-modal {
+  display: grid;
+  gap: 1rem;
+}
+
+.detail-bild {
+  width: 100%;
+  max-height: 18rem;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.detail-bild-placeholder {
+  display: grid;
+  min-height: 10rem;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.detail-modal dl {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.detail-modal dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-modal dt {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.detail-modal dd {
+  color: var(--text);
+  font-weight: 950;
+}
+
+.modal.dunkelmodus-modal {
+  border-color: rgba(238, 248, 244, 0.22);
+  background: rgba(9, 28, 22, 0.98);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.modal.dunkelmodus-modal h3 {
+  color: #eef8f4;
+}
+
+.modal.dunkelmodus-modal .detail-bild {
+  border-color: rgba(238, 248, 244, 0.18);
+}
+
+.modal.dunkelmodus-modal .detail-bild-placeholder {
+  background: rgba(5, 18, 14, 0.92);
+  color: #9fb3ac;
+}
+
+.modal.dunkelmodus-modal dl div {
+  border-bottom-color: rgba(238, 248, 244, 0.16);
+}
+
+.modal.dunkelmodus-modal dt {
+  color: #9fb3ac;
+}
+
+.modal.dunkelmodus-modal dd {
+  color: #eef8f4;
+}
+
+.modal-backdrop.dunkelmodus-backdrop {
+  background: rgba(0, 8, 6, 0.68);
+}
+
+.insight-card.dunkelmodus-insight .insight-tooltip {
+  border-color: rgba(238, 248, 244, 0.22);
+  background: rgba(5, 18, 14, 0.98);
+  color: #eef8f4;
+}
+
+:global(body.dark-mode) .dashboard-warning {
+  border-color: rgba(217, 144, 47, 0.62);
+  background: rgba(42, 32, 15, 0.96);
+}
+
+:global(body.dark-mode) .dashboard-warning span {
+  color: #f6c46d;
+}
+
+:global(body.dark-mode) .dashboard-warning strong {
+  color: #eef8f4;
+}
+
+:global(body.dark-mode) table {
+  color: #eef8f4;
+}
+
+:global(body.dark-mode) th,
+:global(body.dark-mode) td {
+  border-bottom-color: rgba(238, 248, 244, 0.16);
+}
+
+:global(body.dark-mode) td {
+  color: #eef8f4;
+}
+
+:global(body.dark-mode) .artikelnummer {
+  border-color: rgba(238, 248, 244, 0.22);
+  color: #5ee0b2;
 }
 
 @media (min-width: 980px) {

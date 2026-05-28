@@ -25,6 +25,66 @@ body {
   color: var(--text);
 }
 
+html.dark-mode {
+  background: #020604 !important;
+}
+
+body.dark-mode {
+  --page-bg: #020604;
+  --surface: rgba(13, 31, 25, 0.94);
+  --surface-strong: #16241f;
+  --surface-dark: #5ee0b2;
+  --text: #eef8f4;
+  --muted: #c4d4ce;
+  --line: rgba(238, 248, 244, 0.22);
+  --accent: #47f0aa;
+  --accent-dark: #6df2bc;
+  --accent-soft: rgba(71, 240, 170, 0.16);
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.32);
+  background:
+    radial-gradient(circle at 14% 8%, rgba(71, 240, 170, 0.12), transparent 22rem),
+    radial-gradient(circle at 86% 10%, rgba(0, 166, 118, 0.12), transparent 24rem),
+    linear-gradient(135deg, #020604 0%, #06100d 54%, #020806 100%) !important;
+}
+
+html.dark-mode body {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(71, 240, 170, 0.12), transparent 22rem),
+    radial-gradient(circle at 86% 10%, rgba(0, 166, 118, 0.12), transparent 24rem),
+    linear-gradient(135deg, #020604 0%, #06100d 54%, #020806 100%) !important;
+}
+
+body.dark-mode::before {
+  background-image:
+    linear-gradient(rgba(71, 240, 170, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71, 240, 170, 0.055) 1px, transparent 1px);
+  opacity: 1;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.76), transparent 82%);
+}
+
+body.dark-mode input,
+body.dark-mode select {
+  background: #10231d;
+  border-color: rgba(238, 248, 244, 0.28);
+  color: #f4fffb;
+}
+
+body.dark-mode input::placeholder {
+  color: #9fb3ac;
+}
+
+body.dark-mode .main-nav a {
+  color: #c4d4ce;
+}
+
+body.dark-mode .app-header,
+body.dark-mode .tools-panel,
+body.dark-mode .bild-bereich,
+body.dark-mode .empty-state,
+body.dark-mode .detail-bild-placeholder {
+  background: rgba(13, 31, 25, 0.88);
+}
+
 body::before {
   position: fixed;
   inset: 0;

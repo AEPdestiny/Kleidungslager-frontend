@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { watchEffect } from 'vue'
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { authState, logout } from './auth'
+import { settingsState } from './settings'
 
 const router = useRouter()
 
@@ -8,6 +10,11 @@ function handleLogout(): void {
   logout()
   router.push('/')
 }
+
+watchEffect(() => {
+  document.body.classList.toggle('dark-mode', settingsState.darkMode)
+  document.documentElement.classList.toggle('dark-mode', settingsState.darkMode)
+})
 </script>
 
 <template>
@@ -83,8 +90,9 @@ function handleLogout(): void {
   width: 2.4rem;
   height: 2.4rem;
   place-items: center;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface-dark);
+  background: #10231d !important;
   color: #ffffff;
   font-weight: 900;
 }
@@ -113,6 +121,17 @@ function handleLogout(): void {
 .logo-line {
   stroke: #47f0aa;
   stroke-width: 1.8;
+}
+
+:global(body.dark-mode) .brand-mark {
+  border-color: rgba(238, 248, 244, 0.22);
+  background: #10231d !important;
+  box-shadow: none;
+}
+
+:global(body.dark-mode) .logo-frame {
+  fill: rgba(71, 240, 170, 0.1);
+  stroke: #47f0aa;
 }
 
 .brand small {

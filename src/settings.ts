@@ -9,6 +9,7 @@ type SettingsState = {
   defaultSort: string
   showApiBadge: boolean
   compactList: boolean
+  darkMode: boolean
 }
 
 const defaultSettings: SettingsState = {
@@ -18,6 +19,7 @@ const defaultSettings: SettingsState = {
   defaultSort: 'bezeichnung',
   showApiBadge: true,
   compactList: false,
+  darkMode: false,
 }
 
 function loadSettings(): SettingsState {
