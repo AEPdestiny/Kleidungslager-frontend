@@ -1061,8 +1061,11 @@ onMounted(() => {
                   <span :class="['kategorie-badge', kategorieClass(teil.kategorie)]">
                     {{ teil.kategorie }}
                   </span>
+                  <span class="detail-separator">·</span>
                   <span>Größe {{ teil.size }}</span>
+                  <span class="detail-separator">·</span>
                   <span>{{ teil.farbe }}</span>
+                  <span class="detail-separator">·</span>
                   <span>Lager {{ teil.lager }}</span>
                 </p>
               </div>
@@ -2008,9 +2011,9 @@ button {
   color: var(--muted);
 }
 
-.details span:not(:last-child)::after {
-  content: '·';
-  margin-left: 0.4rem;
+.detail-separator {
+  color: var(--muted);
+  font-weight: 850;
 }
 
 .aktionen {
