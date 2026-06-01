@@ -6,6 +6,7 @@ import { settingsState } from '../settings'
 
 type Kleidungsstueck = {
   id: number
+  artikelnummer?: string
   bezeichnung: string
   size: string
   lager: number
@@ -24,17 +25,31 @@ const route = useRoute()
 const router = useRouter()
 
 const kleidungsstueck = ref<Kleidungsstueck | null>(null)
+const artikelnummerBearbeitung = ref('')
+const bezeichnung = ref('')
+const size = ref('M')
+const kategorie = ref('HEMD')
+const farbe = ref('')
 const bestand = ref(0)
 const lager = ref(1)
 const bild = ref('')
+const ausgewaehlterBildname = ref('')
 const ladeFehler = ref('')
 const erfolgsmeldung = ref('')
+const bearbeitungsmodus = ref(false)
 const bestandsverlauf = ref<VerlaufsEintrag[]>([])
 const verlaufStorageKey = 'kleidungslager-bestandsverlauf'
 
-const artikelnummer = computed(() => {
+const angezeigteArtikelnummer = computed(() => {
   if (kleidungsstueck.value === null) {
     return ''
+  }
+
+  if (
+    typeof kleidungsstueck.value.artikelnummer === 'string'
+    && kleidungsstueck.value.artikelnummer.trim() !== ''
+  ) {
+    return kleidungsstueck.value.artikelnummer
   }
 
   return 'KL-' + String(kleidungsstueck.value.id).padStart(4, '0')
@@ -65,6 +80,17 @@ function ladeVerlauf(): void {
   }
 }
 
+function setzeBearbeitungsfelder(teil: Kleidungsstueck): void {
+  artikelnummerBearbeitung.value = teil.artikelnummer ?? ''
+  bezeichnung.value = teil.bezeichnung
+  size.value = teil.size
+  kategorie.value = teil.kategorie
+  farbe.value = teil.farbe
+  bestand.value = teil.lagerbestand
+  lager.value = teil.lager
+  bild.value = teil.bild ?? ''
+}
+
 function fuegeVerlaufHinzu(text: string): void {
   const datum = new Date().toLocaleDateString('de-DE')
   const naechsteId =
@@ -79,12 +105,25 @@ function fuegeVerlaufHinzu(text: string): void {
   localStorage.setItem(verlaufStorageKey, JSON.stringify(bestandsverlauf.value))
 }
 
+function bildnameInKlammern(dateiname: string): string {
+  if (dateiname.trim() === '') {
+    return ''
+  }
+
+  return ' (' + dateiname + ')'
+}
+
 function ladeKleidungsstueck(): void {
   const id = Number(route.params.id)
 
   axios
     .get<Kleidungsstueck[]>(getKleidungEndpoint())
     .then((response) => {
+      if (!Array.isArray(response.data)) {
+        ladeFehler.value = 'Kleidungsdaten konnten nicht gelesen werden.'
+        return
+      }
+
       const gefundenesTeil = response.data.find((teil) => {
         return teil.id === id
       })
@@ -95,9 +134,7 @@ function ladeKleidungsstueck(): void {
       }
 
       kleidungsstueck.value = gefundenesTeil
-      bestand.value = gefundenesTeil.lagerbestand
-      lager.value = gefundenesTeil.lager
-      bild.value = gefundenesTeil.bild ?? ''
+      setzeBearbeitungsfelder(gefundenesTeil)
     })
     .catch((error) => {
       console.log(error)
@@ -111,20 +148,25 @@ function aktualisieren(): void {
   }
 
   const altesTeil = kleidungsstueck.value
+  const bildname = ausgewaehlterBildname.value
   const endpoint =
     getKleidungEndpoint() + '/' + altesTeil.id + '/bestand'
 
   axios
     .put<Kleidungsstueck>(endpoint, {
+      bezeichnung: bezeichnung.value,
+      size: size.value,
+      kategorie: kategorie.value,
+      farbe: farbe.value,
       lagerbestand: bestand.value,
       lager: lager.value,
       bild: bild.value,
+      artikelnummer: artikelnummerBearbeitung.value,
     })
     .then((response) => {
       kleidungsstueck.value = response.data
-      bestand.value = response.data.lagerbestand
-      lager.value = response.data.lager
-      bild.value = response.data.bild ?? ''
+      setzeBearbeitungsfelder(response.data)
+      bearbeitungsmodus.value = false
       erfolgsmeldung.value = 'Kleidungsstück aktualisiert.'
 
       if (altesTeil.lagerbestand !== response.data.lagerbestand) {
@@ -148,10 +190,49 @@ function aktualisieren(): void {
             + response.data.lager
         )
       }
+
+      if ((altesTeil.bild ?? '') !== (response.data.bild ?? '')) {
+        if ((altesTeil.bild ?? '') === '') {
+          fuegeVerlaufHinzu(
+            'Bild eingefügt: '
+              + response.data.bezeichnung
+              + bildnameInKlammern(bildname)
+          )
+        } else if ((response.data.bild ?? '') === '') {
+          fuegeVerlaufHinzu('Bild entfernt: ' + response.data.bezeichnung)
+        } else {
+          fuegeVerlaufHinzu(
+            'Bild geändert: '
+              + response.data.bezeichnung
+              + bildnameInKlammern(bildname)
+          )
+        }
+      }
+      ausgewaehlterBildname.value = ''
     })
     .catch((error) => {
       console.log(error)
     })
+}
+
+function bearbeitenStarten(): void {
+  if (kleidungsstueck.value === null) {
+    return
+  }
+
+  setzeBearbeitungsfelder(kleidungsstueck.value)
+  ausgewaehlterBildname.value = ''
+  erfolgsmeldung.value = ''
+  bearbeitungsmodus.value = true
+}
+
+function bearbeitenAbbrechen(): void {
+  if (kleidungsstueck.value !== null) {
+    setzeBearbeitungsfelder(kleidungsstueck.value)
+  }
+
+  ausgewaehlterBildname.value = ''
+  bearbeitungsmodus.value = false
 }
 
 function bildBearbeiten(event: Event): void {
@@ -163,11 +244,10 @@ function bildBearbeiten(event: Event): void {
   }
 
   const reader = new FileReader()
+  ausgewaehlterBildname.value = bildDatei.name
 
   reader.addEventListener('load', () => {
     bild.value = String(reader.result)
-    fuegeVerlaufHinzu('Bild geändert: ' + kleidungsstueck.value?.bezeichnung)
-    aktualisieren()
     input.value = ''
   })
 
@@ -241,39 +321,138 @@ onMounted(() => {
       </div>
 
       <div class="detail-content">
-        <p class="eyebrow">{{ artikelnummer }}</p>
-        <h1>{{ kleidungsstueck.bezeichnung }}</h1>
+        <p
+          class="eyebrow info-target"
+          title="Artikelnummer oder Barcode: Damit kann ein Kleidungsstück eindeutig erkannt werden."
+        >
+          {{ angezeigteArtikelnummer }}
+        </p>
+        <h1
+          class="info-target"
+          title="Bezeichnung: Der Name des Kleidungsstücks."
+        >
+          {{ bezeichnung }}
+        </h1>
 
         <div class="meta-grid">
-          <span>{{ kleidungsstueck.kategorie }}</span>
-          <span>Größe {{ kleidungsstueck.size }}</span>
-          <span>{{ kleidungsstueck.farbe }}</span>
-          <span>Lager {{ kleidungsstueck.lager }}</span>
+          <span title="Kategorie: Die Art des Kleidungsstücks.">{{ kategorie }}</span>
+          <span title="Größe: Die gespeicherte Kleidungsgröße.">Größe {{ size }}</span>
+          <span title="Farbe: Die Farbe des Kleidungsstücks.">{{ farbe }}</span>
+          <span title="Lager: Der Lagerplatz dieses Artikels.">Lager {{ lager }}</span>
+          <span title="Bestand: So viele Stück sind aktuell vorhanden.">{{ bestand }} Stk.</span>
         </div>
 
-        <div class="edit-grid">
+        <div v-if="!bearbeitungsmodus" class="view-actions">
+          <button type="button" @click="bearbeitenStarten">
+            Bearbeiten
+          </button>
+
+          <button class="delete-button" type="button" @click="loeschen">
+            Löschen
+          </button>
+        </div>
+
+        <div v-if="bearbeitungsmodus" class="edit-grid">
+          <label>
+            Artikelnummer / Barcode
+            <input
+              v-model="artikelnummerBearbeitung"
+              placeholder="Optional"
+              title="Optional: Eigene Artikelnummer oder Barcode. Leer lassen ist erlaubt."
+            />
+          </label>
+
+          <label>
+            Bezeichnung
+            <input
+              v-model="bezeichnung"
+              required
+              title="Bezeichnung: Der Name des Kleidungsstücks."
+            />
+          </label>
+
+          <label>
+            Größe
+            <select
+              v-model="size"
+              title="Größe: Die gespeicherte Kleidungsgröße."
+            >
+              <option value="XS">XS</option>
+              <option value="S">S</option>
+              <option value="M">M</option>
+              <option value="L">L</option>
+              <option value="XL">XL</option>
+              <option value="XXL">XXL</option>
+              <option value="XXXL">XXXL</option>
+            </select>
+          </label>
+
+          <label>
+            Kategorie
+            <select
+              v-model="kategorie"
+              title="Kategorie: Die Art des Kleidungsstücks."
+            >
+              <option value="HEMD">HEMD</option>
+              <option value="HOSE">HOSE</option>
+              <option value="KLEID">KLEID</option>
+              <option value="JACKE">JACKE</option>
+              <option value="SCHUHE">SCHUHE</option>
+              <option value="ACCESSOIRES">ACCESSOIRES</option>
+              <option value="SONSTIGES">SONSTIGES</option>
+            </select>
+          </label>
+
+          <label>
+            Farbe
+            <input
+              v-model="farbe"
+              required
+              title="Farbe: Die Farbe des Kleidungsstücks."
+            />
+          </label>
+
           <label>
             Bestand
-            <input v-model.number="bestand" min="0" type="number" />
+            <input
+              v-model.number="bestand"
+              min="0"
+              title="Bestand: So viele Stück sind aktuell vorhanden."
+              type="number"
+            />
           </label>
 
           <label>
             Lager
-            <input v-model.number="lager" min="1" type="number" />
+            <input
+              v-model.number="lager"
+              min="1"
+              title="Lager: Der Lagerplatz dieses Artikels."
+              type="number"
+            />
           </label>
         </div>
 
-        <div class="action-grid">
+        <div v-if="bearbeitungsmodus" class="action-grid">
           <button type="button" @click="aktualisieren">
             Aktualisieren
           </button>
 
+          <button class="remove-button" type="button" @click="bearbeitenAbbrechen">
+            Abbrechen
+          </button>
+
           <label class="upload-button">
-            Bild ändern
+            {{ bild === '' ? 'Bild einfügen' : 'Bild ändern' }}
             <input accept="image/*" type="file" @change="bildBearbeiten" />
           </label>
 
-          <button class="remove-button" type="button" @click="bildEntfernen">
+          <button
+            v-if="bild !== ''"
+            class="remove-button"
+            type="button"
+            @click="bildEntfernen"
+          >
             Bild entfernen
           </button>
 
@@ -296,6 +475,10 @@ onMounted(() => {
     >
       <p class="eyebrow">Aktivitätsprotokoll</p>
       <h2>Dieser Artikel</h2>
+      <p class="activity-help">
+        Hier werden Änderungen zu diesem Kleidungsstück gesammelt, zum Beispiel
+        wenn Bestand, Lager oder Bild geändert werden.
+      </p>
 
       <ul v-if="aktivitaetenZumArtikel.length > 0">
         <li v-for="eintrag in aktivitaetenZumArtikel" :key="eintrag.id">
@@ -364,6 +547,7 @@ onMounted(() => {
   display: grid;
   align-content: start;
   gap: 1rem;
+  min-width: 0;
 }
 
 .eyebrow {
@@ -384,9 +568,14 @@ h1 {
   font-size: clamp(2rem, 5vw, 3.5rem);
 }
 
+.info-target {
+  cursor: help;
+}
+
 .meta-grid,
 .edit-grid,
-.action-grid {
+.action-grid,
+.view-actions {
   display: grid;
   gap: 0.75rem;
 }
@@ -404,7 +593,7 @@ h1 {
 }
 
 .edit-grid {
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
 }
 
 label {
@@ -412,9 +601,13 @@ label {
   gap: 0.35rem;
   color: var(--text);
   font-weight: 850;
+  min-width: 0;
 }
 
-input {
+input,
+select {
+  width: 100%;
+  box-sizing: border-box;
   min-height: 2.65rem;
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--line);
@@ -425,11 +618,12 @@ input {
 }
 
 .action-grid {
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 }
 
 .action-grid button,
-.upload-button {
+.upload-button,
+.view-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -440,6 +634,11 @@ input {
   color: #ffffff;
   cursor: pointer;
   font-weight: 900;
+}
+
+.view-actions {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  max-width: 22rem;
 }
 
 .upload-button input {
@@ -492,6 +691,13 @@ input {
   font-weight: 800;
 }
 
+.activity-help {
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .detail-page.dunkelmodus-detail,
 .activity-panel.dunkelmodus-activity {
   border-color: rgba(238, 248, 244, 0.22);
@@ -504,7 +710,8 @@ input {
   background: rgba(5, 18, 14, 0.92);
 }
 
-.detail-page.dunkelmodus-detail input {
+.detail-page.dunkelmodus-detail input,
+.detail-page.dunkelmodus-detail select {
   border-color: rgba(238, 248, 244, 0.28);
   background: #10231d;
   color: #eef8f4;
@@ -512,7 +719,7 @@ input {
 
 @media (min-width: 860px) {
   .detail-page {
-    grid-template-columns: minmax(18rem, 0.8fr) minmax(0, 1fr);
+    grid-template-columns: minmax(18rem, 0.9fr) minmax(24rem, 1.1fr);
   }
 }
 </style>

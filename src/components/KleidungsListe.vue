@@ -6,6 +6,7 @@ import { settingsState } from '../settings'
 
 type Kleidungsstueck = {
   id: number
+  artikelnummer?: string
   bezeichnung: string
   size: string
   lager: number
@@ -16,6 +17,7 @@ type Kleidungsstueck = {
 }
 
 type NeuesKleidungsstueck = {
+  artikelnummer: string
   bezeichnung: string
   size: string
   lager: number
@@ -69,6 +71,7 @@ let naechsteVerlaufId = 1
 const verlaufStorageKey = 'kleidungslager-bestandsverlauf'
 
 const neuesKleidungsstueck = ref<NeuesKleidungsstueck>({
+  artikelnummer: '',
   bezeichnung: '',
   size: 'M',
   lager: 1,
@@ -209,16 +212,27 @@ const istKompaktAnsicht = computed(() => {
   return ansicht.value === 'kompakt'
 })
 
-function artikelnummer(id: number): string {
-  return 'KL-' + String(id).padStart(4, '0')
+function artikelnummer(teil: Kleidungsstueck): string {
+  if (typeof teil.artikelnummer === 'string' && teil.artikelnummer.trim() !== '') {
+    return teil.artikelnummer
+  }
+
+  return 'KL-' + String(teil.id).padStart(4, '0')
 }
 
 function kategorieClass(kategorie: string): string {
-  return 'kategorie-' + kategorie.toLowerCase()
+  return 'kategorie-' + String(kategorie ?? 'sonstiges').toLowerCase()
 }
 
 function oeffneDetailseite(id: number): void {
   router.push('/kleidung/' + id)
+}
+
+function istOhneFilter(wert: string | null | undefined): boolean {
+  return wert === undefined
+    || wert === null
+    || wert === ''
+    || wert === 'Alle'
 }
 
 const gefilterteKleidungsstuecke = computed(() => {
@@ -232,11 +246,11 @@ const gefilterteKleidungsstuecke = computed(() => {
 
   const gefiltert = kleidungsstuecke.value.filter((teil) => {
     const suchText = [
-      artikelnummer(teil.id),
-      teil.bezeichnung,
-      teil.kategorie,
-      teil.size,
-      teil.farbe,
+      artikelnummer(teil),
+      teil.bezeichnung ?? '',
+      teil.kategorie ?? '',
+      teil.size ?? '',
+      teil.farbe ?? '',
       'lager ' + teil.lager,
       String(teil.lager),
     ].join(' ').toLowerCase()
@@ -247,13 +261,13 @@ const gefilterteKleidungsstuecke = computed(() => {
       })
 
     const passtZurKategorie =
-      kategorieFilter.value === '' || teil.kategorie === kategorieFilter.value
+      istOhneFilter(kategorieFilter.value) || teil.kategorie === kategorieFilter.value
 
     const passtZurGroesse =
-      groesseFilter.value === '' || teil.size === groesseFilter.value
+      istOhneFilter(groesseFilter.value) || teil.size === groesseFilter.value
 
     const passtZumLager =
-      lagerFilter.value === '' || String(teil.lager) === lagerFilter.value
+      istOhneFilter(lagerFilter.value) || String(teil.lager) === lagerFilter.value
 
     return passtZurSuche
       && passtZurKategorie
@@ -274,7 +288,7 @@ const gefilterteKleidungsstuecke = computed(() => {
       return a.kategorie.localeCompare(b.kategorie)
     }
 
-    return a.bezeichnung.localeCompare(b.bezeichnung)
+    return String(a.bezeichnung ?? '').localeCompare(String(b.bezeichnung ?? ''))
   })
 })
 
@@ -392,6 +406,7 @@ function createKleidung(): void {
       )
 
       neuesKleidungsstueck.value = {
+        artikelnummer: '',
         bezeichnung: '',
         size: 'M',
         lager: 1,
@@ -659,7 +674,7 @@ function csvExportieren(): void {
   const zeilen = kleidungsstuecke.value.map((teil) => {
     return [
       teil.id,
-      artikelnummer(teil.id),
+      artikelnummer(teil),
       teil.bezeichnung,
       teil.kategorie,
       teil.size,
@@ -784,8 +799,21 @@ onMounted(() => {
         </div>
 
         <label>
+          Artikelnummer / Barcode
+          <input
+            v-model="neuesKleidungsstueck.artikelnummer"
+            placeholder="z.B. KL-0001 oder Barcode"
+            title="Optional: Du kannst hier eine eigene Artikelnummer oder einen Barcode eingeben. Wenn du nichts eingibst, wird automatisch KL-0001 usw. angezeigt."
+          />
+        </label>
+
+        <label>
           Bezeichnung
-          <input v-model="neuesKleidungsstueck.bezeichnung" required />
+          <input
+            v-model="neuesKleidungsstueck.bezeichnung"
+            required
+            title="Bezeichnung: Der Name des Kleidungsstücks, z.B. Pullover oder Jeans."
+          />
         </label>
 
         <label>
@@ -995,17 +1023,34 @@ onMounted(() => {
                     teil.lagerbestand <= settingsState.lowStockThreshold,
                 }"
               >
-                <td>{{ artikelnummer(teil.id) }}</td>
-                <td>{{ teil.bezeichnung }}</td>
                 <td>
-                  <span :class="['kategorie-badge', kategorieClass(teil.kategorie)]">
+                  <span
+                    class="info-target"
+                    title="Artikelnummer oder Barcode: Damit kann ein Kleidungsstück eindeutig erkannt werden."
+                  >
+                    {{ artikelnummer(teil) }}
+                  </span>
+                </td>
+                <td>
+                  <span
+                    class="info-target"
+                    title="Bezeichnung: Der Name des Kleidungsstücks."
+                  >
+                    {{ teil.bezeichnung }}
+                  </span>
+                </td>
+                <td>
+                  <span
+                    :class="['kategorie-badge', kategorieClass(teil.kategorie)]"
+                    title="Kategorie: Die Art des Kleidungsstücks."
+                  >
                     {{ teil.kategorie }}
                   </span>
                 </td>
-                <td>{{ teil.size }}</td>
-                <td>{{ teil.farbe }}</td>
-                <td>Lager {{ teil.lager }}</td>
-                <td>{{ teil.lagerbestand }} Stk.</td>
+                <td title="Größe: Die gespeicherte Kleidungsgröße.">{{ teil.size }}</td>
+                <td title="Farbe: Die Farbe des Kleidungsstücks.">{{ teil.farbe }}</td>
+                <td title="Lager: Der Lagerplatz dieses Artikels.">Lager {{ teil.lager }}</td>
+                <td title="Bestand: So viele Stück sind aktuell vorhanden.">{{ teil.lagerbestand }} Stk.</td>
                 <td>
                   <button type="button" @click="oeffneDetailseite(teil.id)">
                     Öffnen
@@ -1047,8 +1092,18 @@ onMounted(() => {
               <span v-else class="item-icon">{{ teil.kategorie.charAt(0) }}</span>
               <div>
                 <div class="item-title">
-                  <span class="artikelnummer">{{ artikelnummer(teil.id) }}</span>
-                  <h3>{{ teil.bezeichnung }}</h3>
+                  <span
+                    class="artikelnummer info-target"
+                    title="Artikelnummer oder Barcode: Damit kann ein Kleidungsstück eindeutig erkannt werden."
+                  >
+                    {{ artikelnummer(teil) }}
+                  </span>
+                  <h3
+                    class="info-target"
+                    title="Bezeichnung: Der Name des Kleidungsstücks."
+                  >
+                    {{ teil.bezeichnung }}
+                  </h3>
                   <span class="compact-stock">{{ teil.lagerbestand }} Stk.</span>
                   <span
                     v-if="teil.lagerbestand <= settingsState.lowStockThreshold"
@@ -1058,15 +1113,18 @@ onMounted(() => {
                   </span>
                 </div>
                 <p class="details">
-                  <span :class="['kategorie-badge', kategorieClass(teil.kategorie)]">
+                  <span
+                    :class="['kategorie-badge', kategorieClass(teil.kategorie)]"
+                    title="Kategorie: Die Art des Kleidungsstücks."
+                  >
                     {{ teil.kategorie }}
                   </span>
                   <span class="detail-separator">·</span>
-                  <span>Größe {{ teil.size }}</span>
+                  <span title="Größe: Die gespeicherte Kleidungsgröße.">Größe {{ teil.size }}</span>
                   <span class="detail-separator">·</span>
-                  <span>{{ teil.farbe }}</span>
+                  <span title="Farbe: Die Farbe des Kleidungsstücks.">{{ teil.farbe }}</span>
                   <span class="detail-separator">·</span>
-                  <span>Lager {{ teil.lager }}</span>
+                  <span title="Lager: Der Lagerplatz dieses Artikels.">Lager {{ teil.lager }}</span>
                 </p>
               </div>
             </div>
@@ -1088,7 +1146,7 @@ onMounted(() => {
                 <strong>{{ teil.lagerbestand }} Stk.</strong>
               </div>
 
-              <div class="stepper">
+              <div class="stepper hover-control">
                 <button type="button" @click="aendereBestand(teil.id, -10)">
                   -10
                 </button>
@@ -1142,7 +1200,7 @@ onMounted(() => {
                   bestandBearbeitung[teil.id] !== teil.lagerbestand
                     || lagerBearbeitung[teil.id] !== teil.lager
                 "
-                class="update-button"
+                class="update-button hover-control"
                 type="button"
                 @click="updateKleidung(teil.id)"
               >
@@ -1157,13 +1215,13 @@ onMounted(() => {
                 @change="bildBearbeiten($event, teil.id)"
               />
 
-              <label class="small-upload-button" :for="'bild-edit-' + teil.id">
+              <label class="small-upload-button hover-control" :for="'bild-edit-' + teil.id">
                 Bild ändern
               </label>
 
               <button
                 v-if="teil.bild"
-                class="remove-image-button"
+                class="remove-image-button hover-control"
                 type="button"
                 @click="bildEntfernen(teil.id)"
               >
@@ -1171,7 +1229,7 @@ onMounted(() => {
               </button>
 
               <button
-                class="detail-button"
+                class="detail-button hover-control"
                 type="button"
                 @click="oeffneDetailseite(teil.id)"
               >
@@ -1751,14 +1809,14 @@ button {
   flex-direction: row;
   justify-content: space-between;
   min-height: auto;
-  gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
   cursor: pointer;
 }
 
 .kleidungsstueck.kompakt .item-main {
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.65rem;
 }
 
 .kleidungsstueck.kompakt .item-icon {
@@ -1776,14 +1834,14 @@ button {
 
 .kleidungsstueck.kompakt h3 {
   font-size: 0.9rem;
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
 .kleidungsstueck.kompakt .details {
-  gap: 0.18rem;
-  margin-top: 0;
+  gap: 0.32rem;
+  margin-top: 0.18rem;
   font-size: 0.76rem;
-  line-height: 1.25;
+  line-height: 1.45;
 }
 
 .kleidungsstueck.kompakt .aktionen {
@@ -1804,14 +1862,17 @@ button {
 
 .compact-hint {
   flex: 0 0 auto;
-  padding: 0.25rem 0.55rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--accent-dark);
+  background: var(--accent);
+  color: #062019;
   font-size: 0.72rem;
   font-weight: 950;
   opacity: 0;
+  display: inline-flex;
+  align-items: center;
   transition: opacity 0.18s ease;
 }
 
@@ -1941,27 +2002,34 @@ button {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  column-gap: 0.55rem;
+  row-gap: 0.32rem;
 }
 
 .artikelnummer {
-  padding: 0.18rem 0.45rem;
+  padding: 0.12rem 0.42rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--accent-dark);
-  font-size: 0.68rem;
+  font-size: 0.64rem;
+  line-height: 1.2;
   font-weight: 950;
+}
+
+.info-target {
+  cursor: help;
 }
 
 .kategorie-badge {
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  min-height: 1.45rem;
-  padding: 0.16rem 0.48rem;
+  min-height: 1.25rem;
+  padding: 0.12rem 0.44rem;
   border-radius: 999px;
   color: #10231d;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
   font-weight: 950;
 }
 
@@ -2021,6 +2089,22 @@ button {
   flex: 0 0 min(100%, 25rem);
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
+}
+
+.hover-control {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.25rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.kleidungsstueck:hover .hover-control,
+.kleidungsstueck:focus-within .hover-control {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .bestand-anzeige {
@@ -2122,8 +2206,9 @@ button {
 }
 
 :global(body.dark-mode) .compact-hint {
-  background: rgba(9, 28, 22, 0.92);
-  color: #5ee0b2;
+  border-color: rgba(94, 224, 178, 0.55);
+  background: #5ee0b2;
+  color: #062019;
 }
 
 :global(body.dark-mode) .remove-image-button {
