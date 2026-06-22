@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  groessenFuerKategorie,
+  standardgroesseFuerKategorie,
+} from '../groessen'
 import { settingsState } from '../settings'
+import { validiereKleidungsFormular, type Feldfehler } from '../formularValidierung'
 
 type Kleidungsstueck = {
   id: number
@@ -19,6 +24,11 @@ type Kleidungsstueck = {
 type VerlaufsEintrag = {
   id: number
   text: string
+}
+
+type ApiFehler = {
+  meldung?: string
+  feldfehler?: Feldfehler
 }
 
 const route = useRoute()
@@ -38,7 +48,14 @@ const ladeFehler = ref('')
 const erfolgsmeldung = ref('')
 const bearbeitungsmodus = ref(false)
 const bestandsverlauf = ref<VerlaufsEintrag[]>([])
+const verlaufListe = ref<HTMLUListElement | null>(null)
+const bearbeitungsFehler = ref('')
+const feldfehler = ref<Feldfehler>({})
 const verlaufStorageKey = 'kleidungslager-bestandsverlauf'
+
+const groessenOptionen = computed(() => {
+  return groessenFuerKategorie(kategorie.value)
+})
 
 const angezeigteArtikelnummer = computed(() => {
   if (kleidungsstueck.value === null) {
@@ -77,6 +94,16 @@ function ladeVerlauf(): void {
 
   if (gespeicherterVerlauf !== null) {
     bestandsverlauf.value = JSON.parse(gespeicherterVerlauf)
+    bestandsverlauf.value.sort((a, b) => a.id - b.id)
+    void scrolleZumNeuestenEintrag()
+  }
+}
+
+async function scrolleZumNeuestenEintrag(): Promise<void> {
+  await nextTick()
+
+  if (verlaufListe.value !== null) {
+    verlaufListe.value.scrollTop = verlaufListe.value.scrollHeight
   }
 }
 
@@ -96,13 +123,14 @@ function fuegeVerlaufHinzu(text: string): void {
   const naechsteId =
     Math.max(0, ...bestandsverlauf.value.map((eintrag) => eintrag.id)) + 1
 
-  bestandsverlauf.value.unshift({
+  bestandsverlauf.value.push({
     id: naechsteId,
     text: datum + ': ' + text,
   })
 
-  bestandsverlauf.value = bestandsverlauf.value.slice(0, 8)
+  bestandsverlauf.value = bestandsverlauf.value.slice(-100)
   localStorage.setItem(verlaufStorageKey, JSON.stringify(bestandsverlauf.value))
+  void scrolleZumNeuestenEintrag()
 }
 
 function bildnameInKlammern(dateiname: string): string {
@@ -144,6 +172,22 @@ function ladeKleidungsstueck(): void {
 
 function aktualisieren(): void {
   if (kleidungsstueck.value === null) {
+    return
+  }
+
+  bearbeitungsFehler.value = ''
+  feldfehler.value = validiereKleidungsFormular({
+    artikelnummer: artikelnummerBearbeitung.value,
+    bezeichnung: bezeichnung.value,
+    size: size.value,
+    lager: lager.value,
+    kategorie: kategorie.value,
+    farbe: farbe.value,
+    lagerbestand: bestand.value,
+  })
+
+  if (Object.keys(feldfehler.value).length > 0) {
+    bearbeitungsFehler.value = 'Bitte korrigiere die markierten Eingaben.'
     return
   }
 
@@ -212,6 +256,13 @@ function aktualisieren(): void {
     })
     .catch((error) => {
       console.log(error)
+      const apiFehler = axios.isAxiosError<ApiFehler>(error)
+        ? error.response?.data
+        : undefined
+
+      feldfehler.value = apiFehler?.feldfehler ?? {}
+      bearbeitungsFehler.value =
+        apiFehler?.meldung ?? 'Die Änderungen konnten nicht gespeichert werden.'
     })
 }
 
@@ -223,6 +274,8 @@ function bearbeitenStarten(): void {
   setzeBearbeitungsfelder(kleidungsstueck.value)
   ausgewaehlterBildname.value = ''
   erfolgsmeldung.value = ''
+  bearbeitungsFehler.value = ''
+  feldfehler.value = {}
   bearbeitungsmodus.value = true
 }
 
@@ -233,6 +286,12 @@ function bearbeitenAbbrechen(): void {
 
   ausgewaehlterBildname.value = ''
   bearbeitungsmodus.value = false
+  bearbeitungsFehler.value = ''
+  feldfehler.value = {}
+}
+
+function detailKategorieGeaendert(): void {
+  size.value = standardgroesseFuerKategorie(kategorie.value)
 }
 
 function bildBearbeiten(event: Event): void {
@@ -336,7 +395,7 @@ onMounted(() => {
 
         <div class="meta-grid">
           <span title="Kategorie: Die Art des Kleidungsstücks.">{{ kategorie }}</span>
-          <span title="Größe: Die gespeicherte Kleidungsgröße.">Größe {{ size }}</span>
+          <span v-if="size" title="Größe: Die gespeicherte Kleidungsgröße.">Größe {{ size }}</span>
           <span title="Farbe: Die Farbe des Kleidungsstücks.">{{ farbe }}</span>
           <span title="Lager: Der Lagerplatz dieses Artikels.">Lager {{ lager }}</span>
           <span title="Bestand: So viele Stück sind aktuell vorhanden.">{{ bestand }} Stk.</span>
@@ -352,23 +411,37 @@ onMounted(() => {
           </button>
         </div>
 
+        <p v-if="bearbeitungsFehler !== ''" class="error-message edit-error">
+          {{ bearbeitungsFehler }}
+        </p>
+
         <div v-if="bearbeitungsmodus" class="edit-grid">
           <label>
             Artikelnummer / Barcode
             <input
               v-model="artikelnummerBearbeitung"
+              :aria-invalid="feldfehler.artikelnummer !== undefined"
+              maxlength="100"
               placeholder="Optional"
               title="Optional: Eigene Artikelnummer oder Barcode. Leer lassen ist erlaubt."
             />
+            <span v-if="feldfehler.artikelnummer" class="feld-fehler">
+              {{ feldfehler.artikelnummer }}
+            </span>
           </label>
 
           <label>
             Bezeichnung
             <input
               v-model="bezeichnung"
+              :aria-invalid="feldfehler.bezeichnung !== undefined"
+              maxlength="100"
               required
               title="Bezeichnung: Der Name des Kleidungsstücks."
             />
+            <span v-if="feldfehler.bezeichnung" class="feld-fehler">
+              {{ feldfehler.bezeichnung }}
+            </span>
           </label>
 
           <label>
@@ -377,13 +450,14 @@ onMounted(() => {
               v-model="size"
               title="Größe: Die gespeicherte Kleidungsgröße."
             >
-              <option value="XS">XS</option>
-              <option value="S">S</option>
-              <option value="M">M</option>
-              <option value="L">L</option>
-              <option value="XL">XL</option>
-              <option value="XXL">XXL</option>
-              <option value="XXXL">XXXL</option>
+              <option value="">Keine Größe</option>
+              <option
+                v-for="groesse in groessenOptionen"
+                :key="groesse"
+                :value="groesse"
+              >
+                {{ groesse }}
+              </option>
             </select>
           </label>
 
@@ -392,6 +466,7 @@ onMounted(() => {
             <select
               v-model="kategorie"
               title="Kategorie: Die Art des Kleidungsstücks."
+              @change="detailKategorieGeaendert"
             >
               <option value="HEMD">HEMD</option>
               <option value="HOSE">HOSE</option>
@@ -407,56 +482,77 @@ onMounted(() => {
             Farbe
             <input
               v-model="farbe"
+              :aria-invalid="feldfehler.farbe !== undefined"
+              maxlength="50"
               required
               title="Farbe: Die Farbe des Kleidungsstücks."
             />
+            <span v-if="feldfehler.farbe" class="feld-fehler">
+              {{ feldfehler.farbe }}
+            </span>
           </label>
 
           <label>
             Bestand
             <input
               v-model.number="bestand"
+              :aria-invalid="feldfehler.lagerbestand !== undefined"
               min="0"
               title="Bestand: So viele Stück sind aktuell vorhanden."
               type="number"
             />
+            <span v-if="feldfehler.lagerbestand" class="feld-fehler">
+              {{ feldfehler.lagerbestand }}
+            </span>
           </label>
 
           <label>
             Lager
             <input
               v-model.number="lager"
+              :aria-invalid="feldfehler.lager !== undefined"
               min="1"
               title="Lager: Der Lagerplatz dieses Artikels."
               type="number"
             />
+            <span v-if="feldfehler.lager" class="feld-fehler">
+              {{ feldfehler.lager }}
+            </span>
           </label>
         </div>
 
         <div v-if="bearbeitungsmodus" class="action-grid">
-          <button type="button" @click="aktualisieren">
+          <button class="update-action" type="button" @click="aktualisieren">
             Aktualisieren
           </button>
 
-          <button class="remove-button" type="button" @click="bearbeitenAbbrechen">
+          <button
+            class="remove-button cancel-action"
+            type="button"
+            @click="bearbeitenAbbrechen"
+          >
             Abbrechen
           </button>
 
-          <label class="upload-button">
+          <label class="upload-button image-action">
             {{ bild === '' ? 'Bild einfügen' : 'Bild ändern' }}
             <input accept="image/*" type="file" @change="bildBearbeiten" />
           </label>
 
           <button
             v-if="bild !== ''"
-            class="remove-button"
+            class="remove-button remove-image-action"
             type="button"
             @click="bildEntfernen"
           >
             Bild entfernen
           </button>
 
-          <button class="delete-button" type="button" @click="loeschen">
+          <button
+            class="delete-button delete-action"
+            type="button"
+            @click="loeschen"
+          >
             Löschen
           </button>
         </div>
@@ -480,7 +576,11 @@ onMounted(() => {
         wenn Bestand, Lager oder Bild geändert werden.
       </p>
 
-      <ul v-if="aktivitaetenZumArtikel.length > 0">
+      <ul
+        v-if="aktivitaetenZumArtikel.length > 0"
+        ref="verlaufListe"
+        class="activity-list"
+      >
         <li v-for="eintrag in aktivitaetenZumArtikel" :key="eintrag.id">
           {{ eintrag.text }}
         </li>
@@ -534,6 +634,10 @@ onMounted(() => {
   border: 1px solid var(--line);
   border-radius: 8px;
   object-fit: cover;
+}
+
+.detail-media img {
+  background: #ffffff;
 }
 
 .detail-media div {
@@ -618,7 +722,30 @@ select {
 }
 
 .action-grid {
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "update image remove"
+    ". cancel delete";
+}
+
+.update-action {
+  grid-area: update;
+}
+
+.image-action {
+  grid-area: image;
+}
+
+.remove-image-action {
+  grid-area: remove;
+}
+
+.cancel-action {
+  grid-area: cancel;
+}
+
+.delete-action {
+  grid-area: delete;
 }
 
 .action-grid button,
@@ -661,6 +788,22 @@ select {
   font-weight: 900;
 }
 
+.edit-error {
+  margin-top: 1rem;
+}
+
+.feld-fehler {
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(195, 49, 38, 0.12);
+}
+
 .success-message {
   background: var(--accent-soft);
   color: var(--accent-dark);
@@ -676,13 +819,18 @@ select {
   padding: 1rem;
 }
 
-.activity-panel ul {
+.activity-list {
   display: grid;
   gap: 0.45rem;
+  max-height: 12rem;
   margin-top: 0.75rem;
   padding-left: 1.2rem;
+  padding-right: 0.6rem;
   color: var(--muted);
   font-weight: 800;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .activity-panel p:last-child {
@@ -720,6 +868,18 @@ select {
 @media (min-width: 860px) {
   .detail-page {
     grid-template-columns: minmax(18rem, 0.9fr) minmax(24rem, 1.1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .action-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "update"
+      "image"
+      "remove"
+      "cancel"
+      "delete";
   }
 }
 </style>

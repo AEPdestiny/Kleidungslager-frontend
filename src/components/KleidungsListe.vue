@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import BarcodeScanner from './BarcodeScanner.vue'
+import { validiereKleidungsFormular, type Feldfehler } from '../formularValidierung'
+import {
+  groessenFuerKategorie,
+  standardgroesseFuerKategorie,
+  vergleicheGroessen,
+} from '../groessen'
 import { settingsState } from '../settings'
 
 type Kleidungsstueck = {
@@ -32,6 +39,13 @@ type VerlaufsEintrag = {
   text: string
 }
 
+type ApiFehler = {
+  meldung?: string
+  feldfehler?: Feldfehler
+}
+
+type ScannerModus = 'formular' | 'suche'
+
 const kleidungsstuecke =
   ref<Kleidungsstueck[]>([])
 const router = useRouter()
@@ -61,10 +75,17 @@ const detailKleidungsstueck =
   ref<Kleidungsstueck | null>(null)
 const bestandsverlauf =
   ref<VerlaufsEintrag[]>([])
+const verlaufListe =
+  ref<HTMLUListElement | null>(null)
 const ladeFehler = ref('')
 const bildInput =
   ref<HTMLInputElement | null>(null)
 const bildDateiname = ref('')
+const formularFehler = ref('')
+const feldfehler = ref<Feldfehler>({})
+const scannerModus = ref<ScannerModus | null>(null)
+const scannerMeldung = ref('')
+const barcodeSucheLaeuft = ref(false)
 
 let erfolgsTimeout: number | undefined
 let naechsteVerlaufId = 1
@@ -79,6 +100,10 @@ const neuesKleidungsstueck = ref<NeuesKleidungsstueck>({
   farbe: '',
   lagerbestand: 1,
   bild: '',
+})
+
+const neueGroessenOptionen = computed(() => {
+  return groessenFuerKategorie(neuesKleidungsstueck.value.kategorie)
 })
 
 const anzahlKleidungsstuecke = computed(() => {
@@ -193,7 +218,11 @@ const kategorien = computed(() => {
 const groessen = computed(() => {
   return [...new Set(kleidungsstuecke.value.map((teil) => {
     return teil.size
-  }))].sort()
+  }))]
+    .filter((groesse) => {
+      return String(groesse ?? '').trim() !== ''
+    })
+    .sort(vergleicheGroessen)
 })
 
 const lagerPlaetze = computed(() => {
@@ -288,6 +317,10 @@ const gefilterteKleidungsstuecke = computed(() => {
       return a.kategorie.localeCompare(b.kategorie)
     }
 
+    if (sortierung.value === 'groesse') {
+      return vergleicheGroessen(a.size, b.size)
+    }
+
     return String(a.bezeichnung ?? '').localeCompare(String(b.bezeichnung ?? ''))
   })
 })
@@ -297,6 +330,11 @@ function getKleidungEndpoint(): string {
     import.meta.env.VITE_API_BASE_URL
 
   return baseUrl + '/api/kleidung'
+}
+
+function neueKategorieGeaendert(): void {
+  neuesKleidungsstueck.value.size =
+    standardgroesseFuerKategorie(neuesKleidungsstueck.value.kategorie)
 }
 
 function zeigeErfolg(text: string): void {
@@ -319,21 +357,33 @@ function ladeVerlauf(): void {
   }
 
   bestandsverlauf.value = JSON.parse(gespeicherterVerlauf)
+  bestandsverlauf.value.sort((a, b) => a.id - b.id)
   naechsteVerlaufId =
     Math.max(0, ...bestandsverlauf.value.map((eintrag) => eintrag.id)) + 1
+
+  void scrolleZumNeuestenEintrag()
+}
+
+async function scrolleZumNeuestenEintrag(): Promise<void> {
+  await nextTick()
+
+  if (verlaufListe.value !== null) {
+    verlaufListe.value.scrollTop = verlaufListe.value.scrollHeight
+  }
 }
 
 function fuegeVerlaufHinzu(text: string): void {
   const datum = new Date().toLocaleDateString('de-DE')
 
-  bestandsverlauf.value.unshift({
+  bestandsverlauf.value.push({
     id: naechsteVerlaufId,
     text: datum + ': ' + text,
   })
 
   naechsteVerlaufId += 1
-  bestandsverlauf.value = bestandsverlauf.value.slice(0, 8)
+  bestandsverlauf.value = bestandsverlauf.value.slice(-100)
   localStorage.setItem(verlaufStorageKey, JSON.stringify(bestandsverlauf.value))
+  void scrolleZumNeuestenEintrag()
 }
 
 function setzeBearbeitung(): void {
@@ -389,6 +439,14 @@ function requestKleidung(): void {
 }
 
 function createKleidung(): void {
+  formularFehler.value = ''
+  feldfehler.value = validiereKleidungsFormular(neuesKleidungsstueck.value)
+
+  if (Object.keys(feldfehler.value).length > 0) {
+    formularFehler.value = 'Bitte korrigiere die markierten Eingaben.'
+    return
+  }
+
   axios
     .post<Kleidungsstueck>(
       getKleidungEndpoint(),
@@ -424,7 +482,55 @@ function createKleidung(): void {
     })
     .catch((error) => {
       console.log(error)
+      const apiFehler = axios.isAxiosError<ApiFehler>(error)
+        ? error.response?.data
+        : undefined
+
+      feldfehler.value = apiFehler?.feldfehler ?? {}
+      formularFehler.value =
+        apiFehler?.meldung ?? 'Das Kleidungsstück konnte nicht gespeichert werden.'
     })
+}
+
+function oeffneBarcodeScanner(modus: ScannerModus): void {
+  scannerMeldung.value = ''
+  scannerModus.value = modus
+}
+
+function schliesseBarcodeScanner(): void {
+  scannerModus.value = null
+}
+
+async function barcodeErkannt(barcode: string): Promise<void> {
+  const modus = scannerModus.value
+  scannerModus.value = null
+
+  if (modus === 'formular') {
+    neuesKleidungsstueck.value.artikelnummer = barcode
+    delete feldfehler.value.artikelnummer
+    zeigeErfolg('Barcode wurde in das Formular übernommen.')
+    return
+  }
+
+  barcodeSucheLaeuft.value = true
+  scannerMeldung.value = ''
+
+  try {
+    const endpoint =
+      getKleidungEndpoint() + '/artikelnummer/' + encodeURIComponent(barcode)
+    const response = await axios.get<Kleidungsstueck>(endpoint)
+    await router.push('/kleidung/' + response.data.id)
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      scannerMeldung.value =
+        'Zu diesem Barcode wurde kein Produkt im Lager gefunden.'
+    } else {
+      scannerMeldung.value =
+        'Die Barcode-Suche konnte das Backend nicht erreichen.'
+    }
+  } finally {
+    barcodeSucheLaeuft.value = false
+  }
 }
 
 function aendereBestand(id: number, veraenderung: number): void {
@@ -682,7 +788,7 @@ function csvExportieren(): void {
       teil.lager,
       teil.lagerbestand,
     ].map((wert) => {
-      return '"' + String(wert).replaceAll('"', '""') + '"'
+      return '"' + String(wert).replace(/"/g, '""') + '"'
     }).join(';')
   })
 
@@ -780,7 +886,11 @@ onMounted(() => {
         </div>
       </div>
 
-      <ul v-if="bestandsverlauf.length > 0">
+      <ul
+        v-if="bestandsverlauf.length > 0"
+        ref="verlaufListe"
+        class="verlauf-liste"
+      >
         <li v-for="eintrag in bestandsverlauf" :key="eintrag.id">
           {{ eintrag.text }}
         </li>
@@ -792,46 +902,69 @@ onMounted(() => {
     </section>
 
     <div class="workspace-grid">
-      <form class="formular" @submit.prevent="createKleidung">
+      <form class="formular" novalidate @submit.prevent="createKleidung">
         <div class="form-head">
           <p class="eyebrow">Neuer Eintrag</p>
           <h2>Kleidungsstück speichern</h2>
         </div>
 
+        <p v-if="formularFehler !== ''" class="formular-fehler">
+          {{ formularFehler }}
+        </p>
+
         <label>
           Artikelnummer / Barcode
-          <input
-            v-model="neuesKleidungsstueck.artikelnummer"
-            placeholder="z.B. KL-0001 oder Barcode"
-            title="Optional: Du kannst hier eine eigene Artikelnummer oder einen Barcode eingeben. Wenn du nichts eingibst, wird automatisch KL-0001 usw. angezeigt."
-          />
+          <span class="barcode-input-group">
+            <input
+              v-model="neuesKleidungsstueck.artikelnummer"
+              :aria-invalid="feldfehler.artikelnummer !== undefined"
+              maxlength="100"
+              placeholder="z.B. KL-0001 oder Barcode"
+              title="Optional: Du kannst hier eine eigene Artikelnummer oder einen Barcode eingeben. Wenn du nichts eingibst, wird automatisch KL-0001 usw. angezeigt."
+            />
+            <button type="button" @click="oeffneBarcodeScanner('formular')">
+              Scannen
+            </button>
+          </span>
+          <span v-if="feldfehler.artikelnummer" class="feld-fehler">
+            {{ feldfehler.artikelnummer }}
+          </span>
         </label>
 
         <label>
           Bezeichnung
           <input
             v-model="neuesKleidungsstueck.bezeichnung"
+            :aria-invalid="feldfehler.bezeichnung !== undefined"
+            maxlength="100"
             required
             title="Bezeichnung: Der Name des Kleidungsstücks, z.B. Pullover oder Jeans."
           />
+          <span v-if="feldfehler.bezeichnung" class="feld-fehler">
+            {{ feldfehler.bezeichnung }}
+          </span>
         </label>
 
         <label>
           Größe
           <select v-model="neuesKleidungsstueck.size">
-            <option value="XS">XS</option>
-            <option value="S">S</option>
-            <option value="M">M</option>
-            <option value="L">L</option>
-            <option value="XL">XL</option>
-            <option value="XXL">XXL</option>
-            <option value="XXXL">XXXL</option>
+            <option value="">Keine Größe</option>
+            <option
+              v-for="groesse in neueGroessenOptionen"
+              :key="groesse"
+              :value="groesse"
+            >
+              {{ groesse }}
+            </option>
           </select>
         </label>
 
         <label>
           Kategorie
-          <select v-model="neuesKleidungsstueck.kategorie">
+          <select
+            v-model="neuesKleidungsstueck.kategorie"
+            @change="neueKategorieGeaendert"
+          >
             <option value="HEMD">HEMD</option>
             <option value="HOSE">HOSE</option>
             <option value="KLEID">KLEID</option>
@@ -844,7 +977,15 @@ onMounted(() => {
 
         <label>
           Farbe
-          <input v-model="neuesKleidungsstueck.farbe" required />
+          <input
+            v-model="neuesKleidungsstueck.farbe"
+            :aria-invalid="feldfehler.farbe !== undefined"
+            maxlength="50"
+            required
+          />
+          <span v-if="feldfehler.farbe" class="feld-fehler">
+            {{ feldfehler.farbe }}
+          </span>
         </label>
 
         <label>
@@ -852,6 +993,7 @@ onMounted(() => {
           <span class="number-field">
             <input
               v-model.number="neuesKleidungsstueck.lager"
+              :aria-invalid="feldfehler.lager !== undefined"
               min="1"
               required
               type="number"
@@ -863,6 +1005,9 @@ onMounted(() => {
               <button type="button" @click="aendereNeuesLager(-1)">▼</button>
             </span>
           </span>
+          <span v-if="feldfehler.lager" class="feld-fehler">
+            {{ feldfehler.lager }}
+          </span>
         </label>
 
         <label>
@@ -870,6 +1015,7 @@ onMounted(() => {
           <span class="number-field">
             <input
               v-model.number="neuesKleidungsstueck.lagerbestand"
+              :aria-invalid="feldfehler.lagerbestand !== undefined"
               min="0"
               required
               type="number"
@@ -880,6 +1026,9 @@ onMounted(() => {
               <button type="button" @click="aendereNeuenBestand(1)">▲</button>
               <button type="button" @click="aendereNeuenBestand(-1)">▼</button>
             </span>
+          </span>
+          <span v-if="feldfehler.lagerbestand" class="feld-fehler">
+            {{ feldfehler.lagerbestand }}
           </span>
         </label>
 
@@ -925,8 +1074,22 @@ onMounted(() => {
             <p class="eyebrow">Live-Bestand</p>
             <h2>Kleidungsstücke im Lager</h2>
           </div>
-          <span v-if="settingsState.showApiBadge" class="sync-badge">API</span>
+          <div class="list-head-actions">
+            <span v-if="settingsState.showApiBadge" class="sync-badge">API</span>
+            <button
+              class="barcode-suche-button"
+              :disabled="barcodeSucheLaeuft"
+              type="button"
+              @click="oeffneBarcodeScanner('suche')"
+            >
+              {{ barcodeSucheLaeuft ? 'Suche läuft' : 'Barcode suchen' }}
+            </button>
+          </div>
         </div>
+
+        <p v-if="scannerMeldung !== ''" class="error-message scanner-meldung">
+          {{ scannerMeldung }}
+        </p>
 
         <div class="tools-panel">
           <label>
@@ -987,6 +1150,7 @@ onMounted(() => {
               <option value="bestand">Bestand</option>
               <option value="lager">Lager</option>
               <option value="kategorie">Kategorie</option>
+              <option value="groesse">Größe</option>
             </select>
           </label>
 
@@ -1047,7 +1211,7 @@ onMounted(() => {
                     {{ teil.kategorie }}
                   </span>
                 </td>
-                <td title="Größe: Die gespeicherte Kleidungsgröße.">{{ teil.size }}</td>
+                <td title="Größe: Die gespeicherte Kleidungsgröße.">{{ teil.size || '—' }}</td>
                 <td title="Farbe: Die Farbe des Kleidungsstücks.">{{ teil.farbe }}</td>
                 <td title="Lager: Der Lagerplatz dieses Artikels.">Lager {{ teil.lager }}</td>
                 <td title="Bestand: So viele Stück sind aktuell vorhanden.">{{ teil.lagerbestand }} Stk.</td>
@@ -1090,7 +1254,7 @@ onMounted(() => {
                 class="item-bild"
               />
               <span v-else class="item-icon">{{ teil.kategorie.charAt(0) }}</span>
-              <div>
+              <div class="item-info">
                 <div class="item-title">
                   <span
                     class="artikelnummer info-target"
@@ -1119,8 +1283,10 @@ onMounted(() => {
                   >
                     {{ teil.kategorie }}
                   </span>
-                  <span class="detail-separator">·</span>
-                  <span title="Größe: Die gespeicherte Kleidungsgröße.">Größe {{ teil.size }}</span>
+                  <template v-if="teil.size">
+                    <span class="detail-separator">·</span>
+                    <span title="Größe: Die gespeicherte Kleidungsgröße.">Größe {{ teil.size }}</span>
+                  </template>
                   <span class="detail-separator">·</span>
                   <span title="Farbe: Die Farbe des Kleidungsstücks.">{{ teil.farbe }}</span>
                   <span class="detail-separator">·</span>
@@ -1332,6 +1498,12 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <BarcodeScanner
+      v-if="scannerModus !== null"
+      @close="schliesseBarcodeScanner"
+      @scan="barcodeErkannt"
+    />
   </section>
 </template>
 
@@ -1363,6 +1535,29 @@ onMounted(() => {
   background: rgba(195, 49, 38, 0.1);
   color: var(--danger);
   font-weight: 900;
+}
+
+.formular-fehler,
+.feld-fehler {
+  color: var(--danger);
+  font-weight: 850;
+}
+
+.formular-fehler {
+  padding: 0.75rem;
+  border: 1px solid rgba(195, 49, 38, 0.35);
+  border-radius: 8px;
+  background: rgba(195, 49, 38, 0.08);
+}
+
+.feld-fehler {
+  font-size: 0.78rem;
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(195, 49, 38, 0.12);
 }
 
 .dashboard-warning {
@@ -1527,12 +1722,18 @@ td button {
   background: rgba(217, 144, 47, 0.1);
 }
 
-.verlauf-panel ul {
+.verlauf-liste {
   display: grid;
   gap: 0.45rem;
+  max-height: 12rem;
+  margin: 0;
   padding-left: 1.2rem;
+  padding-right: 0.6rem;
   color: var(--muted);
   font-weight: 800;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .formular,
@@ -1551,6 +1752,39 @@ td button {
   align-items: start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.list-head-actions,
+.barcode-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.list-head-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.barcode-input-group input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.barcode-input-group button,
+.barcode-suche-button {
+  min-height: 2.65rem;
+  padding: 0 0.8rem;
+  white-space: nowrap;
+}
+
+.barcode-suche-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.scanner-meldung {
+  margin-bottom: 1rem;
 }
 
 h2 {
@@ -1694,6 +1928,7 @@ input[type='file'] {
   object-fit: cover;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: #ffffff;
 }
 
 .bild-platzhalter {
@@ -1816,7 +2051,19 @@ button {
 
 .kleidungsstueck.kompakt .item-main {
   align-items: center;
+  flex: 1 1 auto;
   gap: 0.65rem;
+}
+
+.kleidungsstueck.kompakt .item-info {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.kleidungsstueck.kompakt .item-title {
+  display: grid;
+  grid-template-columns: auto minmax(7rem, 1fr) 5.25rem auto;
+  width: 100%;
 }
 
 .kleidungsstueck.kompakt .item-icon {
@@ -1852,6 +2099,9 @@ button {
 
 .kleidungsstueck.kompakt .compact-stock {
   display: inline-flex;
+  justify-self: center;
+  justify-content: center;
+  min-width: 4.4rem;
   padding: 0.12rem 0.35rem;
   border-radius: 6px;
   background: var(--accent-soft);
@@ -1966,6 +2216,10 @@ button {
   min-width: 0;
 }
 
+.item-info {
+  min-width: 0;
+}
+
 .item-icon {
   display: grid;
   flex: 0 0 auto;
@@ -1984,6 +2238,7 @@ button {
   height: 3.2rem;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: #ffffff;
   object-fit: cover;
   transition:
     transform 0.18s ease,

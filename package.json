@@ -8,6 +8,7 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "test:unit": "vitest",
+    "docs": "node dokumentation/generate-docs.mjs",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:*",
@@ -16,6 +17,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.0",
     "axios": "^1.16.1",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
@@ -29,6 +31,7 @@
     "@vue/eslint-config-typescript": "^14.7.0",
     "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.9.1",
+    "docx": "^9.7.1",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-oxlint": "~1.60.0",
@@ -37,6 +40,7 @@
     "jsdom": "^29.0.2",
     "npm-run-all2": "^8.0.4",
     "oxlint": "~1.60.0",
+    "pdfkit": "^0.19.1",
     "prettier": "3.8.3",
     "typescript": "~6.0.0",
     "vite": "^8.0.8",
