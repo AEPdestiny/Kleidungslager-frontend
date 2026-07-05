@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 .DS_Store
+node_modules/
+dist/
 dist
 dist-ssr
 coverage
@@ -37,3 +39,6 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+node_modules/
+dist/
