@@ -1,54 +1,102 @@
-# kleidungslager-frontend
+# Kleidungslager Frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Webanwendung zur Verwaltung eines Kleidungslagers. Das Frontend wurde mit Vue 3, TypeScript und Vite umgesetzt und bindet ein Backend über REST-Endpunkte an.
 
-## Recommended IDE Setup
+## Student
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+Ibrahim Danisman<br>
+Matrikelnummer: 578949
 
-## Recommended Browser Setup
+## Projektüberblick
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+Das Kleidungslager dient dazu, Kleidungsstücke in einem Lagerbestand übersichtlich zu erfassen, zu verwalten und auszuwerten. Nach einer Demo-Anmeldung gelangt der Benutzer in ein geschütztes Dashboard, in dem neue Artikel angelegt, vorhandene Artikel gesucht, gefiltert, sortiert, bearbeitet und gelöscht werden können.
 
-## Type Support for `.vue` Imports in TS
+Die Anwendung arbeitet mit Live-Daten aus dem Backend. Die API-Basis-URL wird über `VITE_API_BASE_URL` konfiguriert und ist in der Entwicklungsumgebung auf `http://localhost:8080` gesetzt.
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+## Features
 
-## Customize configuration
+- **Startseite:** kurze Projektvorstellung mit Einstieg zum Login und Dashboard.
+- **Demo-Login:** geschützter Dashboard-Bereich mit lokal gespeichertem Login-Status.
+- **Dashboard:** zentrale Lagerübersicht mit Kennzahlen zu Artikeln, Gesamtbestand, Lagerplätzen und niedrigen Beständen.
+- **Bestandswarnungen:** Artikel mit niedrigem Bestand werden anhand eines einstellbaren Schwellenwerts hervorgehoben.
+- **Kleidungsstücke erstellen:** neue Artikel können mit Artikelnummer/Barcode, Bezeichnung, Größe, Kategorie, Farbe, Lager, Bestand und Bild gespeichert werden.
+- **Formularvalidierung:** Pflichtfelder, maximale Zeichenlängen und gültige Zahlenwerte werden vor dem Speichern geprüft.
+- **Live-Bestand anzeigen:** gespeicherte Kleidungsstücke werden aus dem Backend geladen und im Dashboard dargestellt.
+- **Suche, Filter und Sortierung:** Bestand kann nach Suchbegriffen, Kategorie, Größe, Lager und Sortierung eingegrenzt werden.
+- **Ansichtswechsel:** Kartenansicht, Tabellenansicht und Kompaktansicht für unterschiedliche Arbeitsweisen.
+- **Bestand und Lager bearbeiten:** Bestand und Lagerplatz können direkt in der Liste angepasst und gespeichert werden.
+- **Detailseite:** jedes Kleidungsstück besitzt eine eigene Detailansicht mit Bild, Stammdaten und Aktionen.
+- **Bearbeitungsmodus:** Artikelnummer, Bezeichnung, Größe, Kategorie, Farbe, Lager, Bestand und Bild können auf der Detailseite bearbeitet werden.
+- **Löschen:** Kleidungsstücke können aus dem Bestand entfernt werden.
+- **Barcode-Scanner:** Barcode kann per Kamera gescannt oder manuell eingegeben werden. Barcodes können in das Formular übernommen oder zur Suche genutzt werden.
+- **CSV-Export:** der aktuelle Lagerbestand kann als CSV-Datei exportiert werden.
+- **Aktivitätsprotokoll:** Änderungen wie Erstellen, Löschen, Bestandsänderungen, Lagerwechsel und Bildänderungen werden lokal im Browser protokolliert.
+- **Einstellungen:** Profilwerte, niedriger-Bestand-Schwelle, Standardsortierung, API-Hinweis, Kompaktansicht und Dunkelmodus können angepasst werden.
+- **Dunkelmodus:** optionale dunkle Darstellung für die Anwendung.
+- **Impressum:** eigene Impressumsseite mit Studentendaten und Hochschulangabe.
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+## Wichtige Seiten
 
-## Project Setup
+- `/` - Startseite
+- `/login` - Demo-Anmeldung
+- `/dashboard` - geschützte Lagerverwaltung
+- `/kleidung/:id` - Detailseite eines Kleidungsstücks
+- `/einstellungen` - Einstellungen
+- `/impressum` - Impressum
+
+## REST-Anbindung
+
+Das Frontend erwartet ein Backend unter der konfigurierten API-Basis-URL. Verwendete Endpunkte sind unter anderem:
+
+- `GET /api/kleidung` - Kleidungsliste laden
+- `POST /api/kleidung` - neues Kleidungsstück speichern
+- `PUT /api/kleidung/{id}/bestand` - Kleidungsstück aktualisieren
+- `DELETE /api/kleidung/{id}` - Kleidungsstück löschen
+- `GET /api/kleidung/artikelnummer/{artikelnummer}` - Kleidungsstück per Artikelnummer oder Barcode suchen
+
+## Technologien
+
+- Vue 3
+- TypeScript
+- Vite
+- Vue Router
+- Axios
+- ZXing Browser für Barcode-Erkennung
+- Vitest für Tests
+- ESLint, Oxlint und Prettier für Codequalität
+
+## Projekt starten
+
+Abhängigkeiten installieren:
 
 ```sh
 npm install
 ```
 
-### Compile and Hot-Reload for Development
+Entwicklungsserver starten:
 
 ```sh
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
+Produktionsbuild erstellen:
 
 ```sh
 npm run build
 ```
 
-### Run Unit Tests with [Vitest](https://vitest.dev/)
+Unit-Tests ausführen:
 
 ```sh
 npm run test:unit
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+Linting ausführen:
 
 ```sh
 npm run lint
 ```
+
+## Dokumentation
+
+Im Ordner `docs/` und `dokumentation/` befinden sich zusätzliche Screenshot-Dokumentationen zum Projekt. Die README liegt im Root-Verzeichnis des Repositorys, damit sie direkt auf GitHub angezeigt wird.
